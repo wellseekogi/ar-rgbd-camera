@@ -1,0 +1,17 @@
+{
+  "name": "ar-floor-is-lava",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "node --experimental-strip-types ./node_modules/oxlint/bin/oxlint web tests/browser.spec.js playwright.config.js",
+    "typecheck": "tsc --noEmit",
+    "test:web": "playwright test"
+  },
+  "devDependencies": {
+    "@oxlint/plugins": "1.93.0",
+    "@playwright/test": "1.56.1",
+    "oxlint": "1.93.0",
+    "typescript": "5.9.3"
+  }
+}

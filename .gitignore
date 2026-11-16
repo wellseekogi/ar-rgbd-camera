@@ -1,0 +1,15 @@
+.venv/
+.validation/
+node_modules/
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+data/*
+models/*.task
+certs/
+dist/
+.browsers/
+test-results/
+playwright-report/
+models/*.onnx
+!data/.gitkeep

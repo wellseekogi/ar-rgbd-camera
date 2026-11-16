@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Floor Is Lava · 카메라 스튜디오</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <header><a href="/" class="brand">FLOOR IS LAVA <span>카메라 스튜디오</span></a><span id="connection">연결 전</span></header>
+  <main>
+    <section id="join" aria-labelledby="join-title">
+      <p class="eyebrow">PLAY ON YOUR FLOOR</p>
+      <h1 id="join-title">바닥을 게임판으로.</h1>
+      <p>핸드폰은 촬영하고, 노트북은 게임을 진행해요.</p>
+      <form id="join-form">
+        <div id="key-field"><label for="token">접속 키</label><input id="token" type="password" autocomplete="off" required placeholder="서버 실행 창의 접속 키"></div>
+        <label for="role">이 기기의 역할</label>
+        <select id="role"><option value="viewer">노트북 · 게임 화면</option><option value="cam1">핸드폰 · 카메라 1</option><option value="cam2">핸드폰 · 카메라 2</option><option value="cam3">핸드폰 · 보조 카메라 3</option></select>
+        <button id="connect-button" class="primary" type="submit">연결하기</button>
+      </form>
+      <p class="muted">노트북의 QR로 접속하면 접속 키가 자동으로 입력돼요. 처음에는 HTTPS 인증서 신뢰 등록과 카메라 허용이 필요해요.</p>
+      <button id="check-connection" type="button">서버 연결 확인하기</button><p id="connection-check" role="status" aria-live="polite"></p>
+    </section>
+    <p id="notice" role="status" aria-live="polite" hidden></p>
+    <section id="studio" hidden>
+      <div class="title-row"><div><p class="eyebrow">CAMERA · DEPTH · REST</p><h1>카메라와 깊이 확인</h1></div><button id="disconnect" type="button">연결 종료하기</button></div>
+      <details id="pairing" open>
+        <summary>핸드폰 연결 QR · 기기 추가</summary>
+        <div class="title-row"><h2>핸드폰 연결 QR</h2><button id="pair-cameras" type="button">QR 새로고침</button></div>
+        <label for="pair-address">핸드폰에서 접속할 노트북 주소</label><select id="pair-address"></select>
+        <p class="muted">핸드폰으로 각 QR을 스캔하고 ‘연결하기’를 눌러 주세요. QR에는 접속 키가 포함돼요. 학교망이 기기 간 통신을 차단하면 연결할 수 없어요.</p>
+        <p id="pairing-status" role="status" aria-live="polite">QR을 준비하고 있어요.</p>
+        <div id="pairing-codes" class="camera-panels"></div>
+      </details>
+      <section class="live-monitor" aria-labelledby="monitor-title">
+        <div class="title-row"><div><h2 id="monitor-title">두 카메라와 깊이를 한눈에</h2><p class="muted">카메라 1이 반환 영상의 기준이고, 카메라 2는 깊이 계산을 도와요.</p></div><a href="#rest-log">REST 응답 로그 보기 ↓</a></div>
+        <div class="live-grid">
+          <article><h3>01 <span>카메라 1 · 기준 영상</span></h3><canvas id="live-cam1" width="640" height="480" aria-label="카메라 1 실시간 영상"></canvas><p id="live-status-cam1" class="muted">카메라 1 연결 대기</p></article>
+          <article><h3>02 <span>카메라 2 · 깊이 보조</span></h3><canvas id="live-cam2" width="640" height="480" aria-label="카메라 2 실시간 영상"></canvas><p id="live-status-cam2" class="muted">카메라 2 연결 대기</p></article>
+          <article><h3>Z <span>실시간 깊이 · 거리별 색상</span></h3><canvas id="depth-canvas" width="640" height="480" aria-label="거리별 색상 깊이맵 · 중앙 십자선 거리 표시"></canvas><p id="depth-frame-info" class="depth-metrics" role="status">좌우 카메라를 보정하고 추적을 시작해 주세요.</p></article>
+        </div>
+        <div class="monitor-settings"><div id="depth-controls"></div><div><ul id="depth-readiness" class="scan-checklist" aria-label="깊이 계산 준비 체크리스트"></ul><button id="download-depth" type="button">깊이·기준 영상·보정값 받기</button></div></div>
+        <p class="muted">카메라 영상은 각각 최신 수신 화면이에요. 깊이와 같은 시점의 원본은 ‘깊이 보기 → 원본 영상’으로 확인해요.</p>
+      </section>
+      <section id="rest-log" aria-label="REST API 실시간 로그"></section>
+      <div class="workspace">
+        <section class="stage" aria-label="카메라 합성 화면">
+          <div class="stage-heading"><label for="view-camera">메인 카메라</label><select id="view-camera"><option value="cam1">카메라 1</option><option value="cam2">카메라 2</option><option value="cam3">카메라 3</option></select><button id="fullscreen" type="button">전체 화면</button></div>
+          <p id="active-guide-status" class="active-guide-status" role="status" aria-live="polite">카메라의 새 영상을 기다리고 있어요.</p>
+          <div id="stage-container"><canvas id="main-canvas" width="960" height="540" aria-label="선택한 카메라의 게임 영상"></canvas><p id="empty-stage">핸드폰에서 카메라를 연결해 주세요.</p></div>
+          <div id="thumbnails" class="thumbnails"></div>
+        </section>
+        <aside aria-label="게임 상태">
+          <div class="score"><div><span>남은 시간</span><strong id="time">60.0<span>초</span></strong></div><div><span>생명</span><strong id="lives">3</strong></div></div>
+          <p id="game-status">카메라 연결 대기</p>
+          <canvas id="floor-canvas" width="320" height="320" aria-label="위에서 본 게임판과 발 위치"></canvas>
+          <p id="tracking-status" class="muted">바닥과 양발 위치를 확인해 주세요.</p>
+          <p id="depth-status" class="muted">깊이 모델 준비 중</p>
+          <div class="actions"><button id="start-game" class="primary" type="button">게임 시작하기</button><button id="stop-game" type="button">종료하기</button></div>
+        </aside>
+      </div>
+      <section aria-labelledby="cameras-title"><div class="title-row"><h2 id="cameras-title">움직이며 카메라 보정</h2><a href="/static/board.png" download="charuco-200x280mm.png">기준판 이미지 받기</a></div><p class="muted">한 칸 40mm, 전체 200×280mm로 출력해요. 각 폰의 안내를 따라 움직이면 사진이 자동으로 모이고 체크돼요. 렌즈 보정 후에는 모든 카메라를 고정하고 같은 바닥 기준판으로 위치를 맞춰요. 이후 움직였다면 다시 보정해 주세요. 카메라 3은 보조이며 깊이는 1·2로 계산해요.</p><div id="camera-panels" class="camera-panels"></div></section>
+      <details><summary>게임 규칙 설정</summary><form id="config-form" class="settings">
+        <label>행 수<input name="rows" type="number" value="4" min="2" max="8" required></label>
+        <label>열 수<input name="cols" type="number" value="4" min="2" max="8" required></label>
+        <label>칸 크기(m)<input name="cell_m" type="number" value="0.45" min="0.2" max="1.5" step="0.05" required></label>
+        <label>시작 X(m)<input name="origin_x" type="number" value="-0.8" min="-10" max="10" step="0.05" required></label>
+        <label>시작 Y(m)<input name="origin_y" type="number" value="0.35" min="-10" max="10" step="0.05" required></label>
+        <label>생명 수<input name="lives" type="number" value="3" min="1" max="10" required></label>
+        <label>제한 시간(초)<input name="duration_s" type="number" value="60" min="10" max="600" required></label>
+        <label>첫 경고 시간(초)<input name="warning_s" type="number" value="3" min="1" max="10" step="0.5" required></label>
+        <button type="submit">규칙 저장하기</button>
+      </form></details>
+    </section>
+    <section id="phone" hidden>
+      <div class="title-row"><h1 id="phone-title">카메라</h1><button id="stop-camera" type="button">촬영 종료하기</button></div>
+      <p id="phone-status" role="status">카메라를 준비하고 있어요.</p>
+      <div class="phone-preview"><video id="local-video" autoplay muted playsinline></video><canvas id="phone-scan-overlay" aria-hidden="true"></canvas></div>
+      <div id="phone-guide"></div>
+      <details><summary>이동·렌즈 변경 후 다시 보정</summary><button id="phone-restart" type="button">자동 보정 처음부터 시작하기</button></details>
+      <p class="muted">기준판은 한 칸 40mm, 전체 200×280mm로 출력해요. 렌즈 보정 중에는 움직이고, 바닥 보정 뒤에는 고정해 주세요. 이동·렌즈·줌 변경 시 다시 보정해야 해요.</p>
+      <div id="phone-depth"><h2>실시간 깊이 · 거리별 색상</h2><canvas id="phone-canvas" width="640" height="480" aria-label="카메라 1의 거리별 색상 깊이맵"></canvas><p id="phone-depth-info" class="depth-metrics" role="status">카메라 1·2의 보정이 끝나면 깊이를 보여줘요.</p><div id="phone-depth-controls"></div></div>
+      <p id="phone-metrics" class="muted"></p>
+    </section>
+  </main>
+</body>
+</html>
