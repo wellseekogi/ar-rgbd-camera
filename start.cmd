@@ -3,20 +3,26 @@ setlocal
 set PYTHONUTF8=1
 chcp 65001 >nul
 cd /d "%~dp0"
-title AR Floor Is Lava
+set "LAVA_START_DEVICE=%LAVA_DEPTH_DEVICE%"
+if not defined LAVA_START_DEVICE set "LAVA_START_DEVICE=cpu"
+title AR Floor Is Lava - %LAVA_START_DEVICE%
 
 if not exist ".venv\Scripts\python.exe" goto setup
 ".venv\Scripts\python.exe" -c "import fastapi, uvicorn, aiortc, cv2, mediapipe, cryptography" >nul 2>&1
 if errorlevel 1 goto setup
+if /i "%LAVA_START_DEVICE%"=="cuda" (
+    ".venv\Scripts\python.exe" -c "import onnxruntime" >nul 2>&1
+    if errorlevel 1 goto setup
+)
 goto prepare
 
 :setup
 echo Preparing the Python environment. The first run may take a few minutes.
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1"
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0setup.ps1" -DepthDevice "%LAVA_START_DEVICE%"
 if errorlevel 1 goto failed
 
 :prepare
-".venv\Scripts\python.exe" scripts\prepare.py
+".venv\Scripts\python.exe" scripts\prepare.py --depth-device "%LAVA_START_DEVICE%"
 if errorlevel 1 goto failed
 echo Starting the server. Your browser will open when it is ready.
 echo Keep this window open. Press Ctrl+C to stop the server.

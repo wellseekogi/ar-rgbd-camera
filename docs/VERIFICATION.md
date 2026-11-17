@@ -1,5 +1,18 @@
 # 검증 기록
 
+## 변경 이유 문서와 CPU·GPU 실행 CMD (2026-11-17)
+
+변경 이유와 현재 제한을 `docs/CHANGES.md`에 모았습니다. `start_cpu.cmd`와 `start_gpu.cmd`는 공통 `start.cmd`를 호출하면서 환경 변수와 최종 CLI 장치를 각각 cpu/cuda로 지정합니다. `setup.ps1 -DepthDevice`도 같은 장치를 명시해 설치 목록·모델 준비·실제 서버의 선택이 어긋나지 않게 했습니다. `requirements-cpu.txt`에 CPU 공통 의존성을 모으고 기존 기본 requirements에서 참조합니다. GPU 패키지가 이미 있더라도 CPU 실행은 삭제 없이 가능합니다.
+
+검사:
+
+- `.venv/Scripts/python.exe -m pytest -q`: 75 passed, exit 0. 새 CMD 검사 7개는 실제 cmd.exe와 공백이 있는 설치 경로를 사용하되 패키지·준비·서버를 stub으로 대체합니다. 반대 환경 변수/CLI 입력에서도 선택 장치를 유지하는지, CPU가 ONNX를 요구하지 않는지, GPU의 ONNX 누락·공통 의존성 누락 시 설치에 장치를 전달하는지, 준비 실패 시 서버 실행을 중단하는지 확인했습니다.
+- `.venv/Scripts/python.exe .validation/check_start_commands.py`: exit 0. 실제 두 CMD를 `--http-local`로 차례로 실행해 `/api/state` HTTP 200과 CPU StereoSGBM/cuda ONNX 초기화, 카메라 두 대 등록을 확인했습니다. 브라우저 열기만 stub으로 막았고 실제 서버와 모델은 사용했습니다. 검사로 띄운 프로세스는 종료했습니다. 이 검사는 실제 폰·HTTPS 권한·최초 다운로드를 확인한 것은 아닙니다.
+- `setup.ps1 -UseCuda -DepthDevice cpu`: exit 0. 반대 CUDA 환경 변수와 `-UseCuda`가 있어도 명시한 CPU 목록과 준비 경로가 우선했습니다. `PIP_DRY_RUN=1`, `PIP_NO_INDEX=1` 환경에서 기존 패키지의 의존성 해석을 검사했고 ONNX 의존성이 포함되지 않았습니다. 새 PC의 실제 최초 설치는 미검증입니다.
+- Ruff·`npm run lint`·`npm run typecheck`: exit 0. 실행·설치 PS1의 구문과 ZIP의 CMD 두 개·CPU 의존성 목록·변경 문서 포함도 확인합니다.
+
+실행 파일은 현재 폴더의 코드를 사용합니다. 브랜치를 자동 전환하지 않고 같은 포트를 사용하므로 서버는 하나씩 실행합니다. 카메라 보정과 출력 기준판 요구사항은 동일합니다.
+
 ## 보정별 후처리 캐시 (2026-11-17)
 
 해상도와 StereoSGBM 설정, 원본 RGB 좌표계·float32 정규화·마스크·반환 규격·350ms 만료 조건은 변경하지 않았습니다. `StereoRectifier`가 생성될 때 원본 픽셀에서 정렬 영상으로 가는 좌표와 Q·R1의 Z 계산 계수, 바닥 평면의 깊이를 한 번 계산합니다. 매 프레임은 시차를 remap하고 Z만 복원합니다. 보정 generation 또는 보정 객체가 바뀌면 기존 signature 로직이 캐시 전체를 교체합니다. 캐시 생성은 worker thread에서 실행해 이벤트 루프를 막지 않습니다.
