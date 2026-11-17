@@ -2,10 +2,9 @@ import cv2
 import numpy as np
 
 
-def render_with_depth(frame, depth, calibration, game):
-    """Compare real and virtual optical Z at the same source frame and pixel."""
-    output = render(frame, None, calibration, game)
-    h, w = depth.shape
+def floor_depth_map(calibration, size):
+    """Optical Z of the fixed floor plane, independent of frame and game state."""
+    w, h = size
     pixels = np.indices((h, w), dtype=np.float32)[::-1].transpose(1, 2, 0).reshape(-1, 1, 2)
     rays_xy = cv2.undistortPoints(pixels, calibration.matrix, calibration.distortion)
     rays = np.c_[rays_xy.reshape(-1, 2), np.ones(h * w)]
@@ -14,7 +13,14 @@ def render_with_depth(frame, depth, calibration, game):
     denominator = rays @ normal
     floor_z = np.full(h * w, np.nan)
     np.divide(numerator, denominator, out=floor_z, where=np.abs(denominator) > 1e-8)
-    floor_z = floor_z.reshape(h, w)
+    return floor_z.reshape(h, w)
+
+
+def render_with_depth(frame, depth, calibration, game, floor_z=None):
+    """Compare real and virtual optical Z at the same source frame and pixel."""
+    output = render(frame, None, calibration, game)
+    if floor_z is None:
+        floor_z = floor_depth_map(calibration, (depth.shape[1], depth.shape[0]))
     occluder = np.isfinite(depth) & (floor_z > 0) & (depth < floor_z - 0.05)
     output[occluder] = (frame[occluder] * 0.45 + output[occluder] * 0.55).astype(np.uint8)
     return output
