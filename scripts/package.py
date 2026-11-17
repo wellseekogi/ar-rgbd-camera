@@ -21,7 +21,10 @@ def main():
         "setup.ps1",
         "start.ps1",
         "start.cmd",
+        "start_cpu.cmd",
+        "start_gpu.cmd",
         "requirements.txt",
+        "requirements-cpu.txt",
         "requirements-gpu.txt",
         "requirements-dev.txt",
         "requirements-lock.txt",
@@ -46,6 +49,9 @@ def main():
         assert package.testzip() is None
         names = package.namelist()
         assert "README.md" in names and "web/board.png" in names
+        assert {"start_cpu.cmd", "start_gpu.cmd", "requirements-cpu.txt", "docs/CHANGES.md"} <= set(
+            names
+        )
         assert not any("session.key" in name or name.startswith("certs/") for name in names)
     report = {
         "files": len(paths),
