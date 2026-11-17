@@ -5,7 +5,7 @@ from pathlib import Path
 import cv2
 import numpy as np
 
-# The same physical board stays still for all three extrinsic captures.
+# The same physical board stays still for both extrinsic captures.
 SQUARE_M = 0.04
 MARKER_M = 0.03
 DICTIONARY = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
