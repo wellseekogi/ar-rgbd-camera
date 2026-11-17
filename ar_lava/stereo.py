@@ -10,7 +10,7 @@ import cv2
 import numpy as np
 
 from ar_lava.protocol import pack
-from ar_lava.render import render_with_depth
+from ar_lava.render import floor_depth_map, render_with_depth
 
 MODEL_SHA256 = "2c79bbb274dc0aef687a8732b987077e9e3aa26ff9dd653141cda48c57dad5d3"
 MAX_PAIR_SKEW_MS = 40
@@ -168,6 +168,21 @@ class StereoRectifier:
                     cv2.CV_32FC1,
                 )
             )
+        # This rectifier is replaced whenever the calibration signature changes.
+        w, h = left.size
+        pixels = np.indices((h, w), dtype=np.float32)[::-1].transpose(1, 2, 0)
+        rectified = cv2.undistortPoints(
+            pixels.reshape(-1, 1, 2), left.matrix, left.distortion, R=self.r1, P=self.p1
+        ).reshape(h, w, 2)
+        self.original_maps = tuple(np.ascontiguousarray(rectified[..., i]) for i in (0, 1))
+        x, y = rectified.astype(np.float64).transpose(2, 0, 1)
+        # Combine Q and R1.T so each frame only evaluates the original optical Z.
+        z_projection = self.r1[:, 2] @ self.q[:3]
+        self.z_offset = x * z_projection[0] + y * z_projection[1] + z_projection[3]
+        self.z_disparity = z_projection[2]
+        self.w_offset = x * self.q[3, 0] + y * self.q[3, 1] + self.q[3, 3]
+        self.w_disparity = self.q[3, 2]
+        self.floor_z = floor_depth_map(left, left.size)
 
     def scaled_matrix(self, calibration):
         matrix = calibration.matrix.copy()
@@ -207,28 +222,19 @@ class StereoRectifier:
 
     def align_to_original(self, disparity):
         # Inverse mapping avoids holes when a low-resolution depth map feeds a larger camera.
-        w, h = self.left.size
-        pixels = np.indices((h, w), dtype=np.float32)[::-1].transpose(1, 2, 0)
-        rectified = cv2.undistortPoints(
-            pixels.reshape(-1, 1, 2),
-            self.left.matrix,
-            self.left.distortion,
-            R=self.r1,
-            P=self.p1,
-        ).reshape(h, w, 2)
         sampled = cv2.remap(
             disparity,
-            rectified[..., 0],
-            rectified[..., 1],
+            *self.original_maps,
             cv2.INTER_NEAREST,
             borderMode=cv2.BORDER_CONSTANT,
             borderValue=float("nan"),
         )
-        rays = np.c_[rectified.reshape(-1, 2), sampled.ravel(), np.ones(h * w)]
-        homogeneous = rays @ self.q.T
+        sampled64 = sampled.astype(np.float64)
         with np.errstate(divide="ignore", invalid="ignore"):
-            camera_points = (homogeneous[:, :3] / homogeneous[:, 3:]) @ self.r1
-        output = camera_points[:, 2].reshape(h, w).astype(np.float32)
+            output = (
+                (self.z_offset + self.z_disparity * sampled64)
+                / (self.w_offset + self.w_disparity * sampled64)
+            ).astype(np.float32)
         invalid = (
             ~np.isfinite(output)
             | (output <= DEPTH_MIN_M)
@@ -418,7 +424,11 @@ class StereoDepth:
         metadata.update(details)
         packet = pack(metadata, png.tobytes() + reference.tobytes() + jpeg.tobytes())
         composite = render_with_depth(
-            left_frame, aligned, self.rectifier.left, self.hub.game.snapshot()
+            left_frame,
+            aligned,
+            self.rectifier.left,
+            self.hub.game.snapshot(),
+            floor_z=self.rectifier.floor_z,
         )
         return {
             "tracking": tracking,
@@ -467,7 +477,9 @@ class StereoDepth:
             )
             try:
                 if signature != self.signature:
-                    self.rectifier = StereoRectifier(left.calibration, right.calibration)
+                    self.rectifier = await asyncio.to_thread(
+                        StereoRectifier, left.calibration, right.calibration
+                    )
                     self.signature = signature
                 result = await asyncio.to_thread(
                     self.compute,
