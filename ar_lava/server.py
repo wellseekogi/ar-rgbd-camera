@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.websockets import WebSocketDisconnect
 
 from ar_lava.calibration import Calibrator, CameraCalibration
+from ar_lava.calibration_check import CalibrationPairCheck
 from ar_lava.game import Game, GameConfig
 from ar_lava.guidance import CalibrationGuide
 from ar_lava.pairing import install_pairing
@@ -76,6 +77,9 @@ class Camera:
         self.depth_composite = None
         self.frame_times = deque(maxlen=30)
         self.received_frames = 0
+        self.floor_validated = False
+        self.pair_quality = {}
+        self.observation_capture_ms = None
 
     def received(self):
         self.received_frames += 1
@@ -87,7 +91,14 @@ class Camera:
             and self.mode == "play"
             and self.calibration is not None
             and self.calibration.ready
+            and self.calibration.lens_validated
+            and self.calibration.profile == self.profile
+            and self.floor_validated
+            and self.pair_quality.get("passed") is True
+            and self.pair_quality.get("generation") == self.generation
+            and current_ms <= self.pair_quality.get("expires_ms", 0)
             and self.sample_frame is not None
+            and self.calibration.size == (self.sample_frame.shape[1], self.sample_frame.shape[0])
             and 0 <= current_ms - self.capture_ms <= MAX_AGE_MS
             and self.clock.rtt_ms <= 100
         )
@@ -107,8 +118,11 @@ class Camera:
             "id": self.camera_id,
             "connected": self.connected,
             "mode": self.mode,
-            "intrinsics": calibration is not None,
-            "calibrated": calibration is not None and calibration.ready,
+            "intrinsics": calibration is not None and calibration.lens_validated,
+            "calibrated": (
+                calibration is not None and calibration.lens_validated
+                and calibration.ready and self.floor_validated
+            ),
             "samples": len(self.calibrator.corners),
             "people": self.people,
             "processing_ms": round(self.processing_ms, 1),
@@ -123,6 +137,7 @@ class Camera:
             "received_frames": self.received_frames,
             "fps": round(fps, 1),
             "guide": self.guide.snapshot(self, current_ms),
+            "quality": self.pair_quality,
         }
 
     def reset_guidance(self):
@@ -131,6 +146,9 @@ class Camera:
         self.background = self.frame = self.sample_frame = self.depth_composite = None
         self.next_segmentation = self.sample_segmentation = None
         self.error = ""
+        self.floor_validated = False
+        self.pair_quality = {}
+        self.observation_capture_ms = None
 
 
 class Viewer:
@@ -187,6 +205,7 @@ class Hub:
             "reason": "카메라를 연결해 주세요.",
         }
         self.stereo = StereoDepth(self, ROOT / "models/c_fast_foundationstereo.onnx")
+        self.calibration_check = CalibrationPairCheck()
 
     def snapshot(self):
         current = now_ms()
@@ -203,6 +222,7 @@ class Hub:
         last = now_ms()
         while True:
             current = now_ms()
+            self.calibration_check.update(self.cameras, current)
             self.tracking = self.stereo.current(current)
             self.game.step((current - last) / 1000, self.tracking)
             last = current
@@ -226,6 +246,8 @@ class Hub:
             camera.calibration.profile != camera.profile or camera.calibration.size != size
         ):
             camera.calibration = None
+            camera.floor_validated = False
+            camera.pair_quality = {}
             camera.generation += 1
             camera.background = None
             camera.calibrator = Calibrator()
@@ -271,6 +293,7 @@ class Hub:
             async with camera.lock:
                 camera.inflight = True
                 try:
+                    camera.observation_capture_ms = capture_ms
                     if camera.profile != profile:
                         camera.background = None
                         camera.landmarks = None
@@ -296,8 +319,10 @@ class Hub:
                             "captured_ms": capture_ms,
                             "processing_ms": camera.processing_ms,
                             "guide": camera.guide.snapshot(camera, now_ms()),
+                            "composite_jpeg_bytes": len(encoded),
+                            "reference_jpeg_bytes": len(payload),
                         },
-                        encoded,
+                        encoded + payload,
                     )
                     for viewer in self.viewers.copy():
                         viewer.push(camera.camera_id, packet)
@@ -468,6 +493,9 @@ def create_app(data_dir=None, model_path=None, token=None):
                     camera.generation += 1
                     camera.landmarks = None
                     camera.mode = "calibration"
+                    camera.floor_validated = False
+                    camera.pair_quality = {}
+                    hub.calibration_check.reset()
                 elif action in ("guide-floor", "guide-background"):
                     if not camera.guide.enabled:
                         raise ValueError("자동 안내를 먼저 켜 주세요.")
@@ -477,32 +505,23 @@ def create_app(data_dir=None, model_path=None, token=None):
                         or now_ms() - camera.capture_ms > 1500
                     ):
                         raise ValueError("카메라의 새 영상을 먼저 연결해 주세요.")
-                    if camera.calibration is None or camera.calibration.profile != camera.profile:
+                    if (camera.calibration is None or not camera.calibration.lens_validated
+                            or camera.calibration.profile != camera.profile):
                         raise ValueError("렌즈 보정을 먼저 완료해 주세요.")
                     if action == "guide-floor":
                         if camera.calibration.ready:
                             raise ValueError(
                                 "바닥 위치가 이미 보정됐어요. 이동했다면 다시 보정해 주세요."
                             )
-                        camera.guide.floor_armed = True
-                        camera.guide.stable = 0
-                        camera.guide.previous = None
-                        camera.guide.message = (
-                            "기준판을 움직이지 말고 잠시 기다려 주세요. "
-                            "바닥 위치를 자동으로 맞춰요."
-                        )
+                        camera.guide.arm_floor(camera)
+                        camera.generation += 1
+                        hub.calibration_check.reset()
                     else:
-                        if any(
-                            other.connected
-                            and (other.calibration is None or not other.calibration.ready)
-                            for other in hub.cameras.values()
-                        ):
-                            raise ValueError(
-                                "연결된 모든 카메라의 바닥 위치 보정을 먼저 완료해 주세요. "
-                                "기준판은 그대로 두세요."
-                            )
-                        if not camera.calibration.ready:
-                            raise ValueError("바닥 위치를 먼저 보정해 주세요.")
+                        hub.calibration_check.update(hub.cameras, now_ms())
+                        if not all(other.connected and other.pair_quality.get("passed")
+                                   and now_ms() <= other.pair_quality.get("expires_ms", 0)
+                                   for other in hub.cameras.values()):
+                            raise ValueError("두 카메라의 동시 기준판 검증을 먼저 통과해 주세요.")
                         if not hub.model_path.is_file():
                             raise ValueError("추적 모델을 먼저 설치해 주세요.")
                         camera.background = camera.frame.copy()
@@ -516,9 +535,20 @@ def create_app(data_dir=None, model_path=None, token=None):
                         camera.calibration.rvec = camera.calibration.tvec = None
                     camera.landmarks, camera.background = None, None
                     camera.mode = "calibration"
+                    camera.floor_validated = False
+                    camera.pair_quality = {}
+                    hub.calibration_check.reset()
                 elif action in ("calibration", "play"):
-                    if action == "play" and not hub.model_path.is_file():
-                        raise ValueError("추적 모델을 먼저 설치해 주세요.")
+                    if action == "play":
+                        hub.calibration_check.update(hub.cameras, now_ms())
+                        if not all(c.connected and c.pair_quality.get("passed")
+                                   and now_ms() <= c.pair_quality.get("expires_ms", 0)
+                                   for c in hub.cameras.values()) or camera.background is None:
+                            raise ValueError(
+                                "두 카메라의 품질 검증과 빈 배경 저장을 먼저 완료해 주세요."
+                            )
+                        if not hub.model_path.is_file():
+                            raise ValueError("추적 모델을 먼저 설치해 주세요.")
                     camera.mode = action
                     camera.landmarks = None
                 else:
@@ -529,6 +559,12 @@ def create_app(data_dir=None, model_path=None, token=None):
                     elif action == "intrinsics":
                         camera.generation += 1
                         camera.landmarks = None
+                        camera.calibration = None
+                        camera.floor_validated = False
+                        camera.pair_quality = {}
+                        camera.background = None
+                        camera.mode = "calibration"
+                        hub.calibration_check.reset()
                         camera.calibration = await asyncio.to_thread(
                             camera.calibrator.solve_intrinsics
                         )
@@ -536,19 +572,22 @@ def create_app(data_dir=None, model_path=None, token=None):
                     elif action == "extrinsics":
                         camera.generation += 1
                         camera.landmarks = None
-                        if camera.calibration is None:
-                            raise ValueError("내부 보정을 먼저 완료해 주세요.")
-                        await asyncio.to_thread(
-                            camera.calibrator.solve_extrinsics,
-                            camera.frame,
-                            camera.calibration,
-                        )
-                        camera.calibration.save(camera.path)
+                        if camera.calibration is None or not camera.calibration.lens_validated:
+                            raise ValueError("검증된 렌즈 보정을 먼저 완료해 주세요.")
+                        camera.guide.arm_floor(camera)
+                        camera.guide.enabled = True
+                        camera.mode = "calibration"
+                        hub.calibration_check.reset()
                     elif action == "background":
+                        hub.calibration_check.update(hub.cameras, now_ms())
+                        if not all(c.connected and c.pair_quality.get("passed")
+                                   and now_ms() <= c.pair_quality.get("expires_ms", 0)
+                                   for c in hub.cameras.values()):
+                            raise ValueError("두 카메라의 동시 기준판 검증을 먼저 통과해 주세요.")
                         camera.background = camera.frame.copy()
                     else:
                         raise HTTPException(404)
-                if not action.startswith("guide-"):
+                if not action.startswith("guide-") and action != "extrinsics":
                     camera.guide.enabled = False
                 camera.error = ""
             except (ValueError, cv2.error) as error:

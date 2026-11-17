@@ -157,6 +157,7 @@ class RtcSession:
                         camera.dropped += 1
                         continue
                     camera.profile = profile
+                    camera.observation_capture_ms = captured_ms
                     # Shield native inference so disconnect cannot release a camera mid-write.
                     native = asyncio.create_task(
                         asyncio.to_thread(

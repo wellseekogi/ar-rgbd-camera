@@ -146,7 +146,8 @@ class StereoRectifier:
             rotation,
             translation,
             flags=cv2.CALIB_ZERO_DISPARITY,
-            alpha=0,
+            # Forced cropping can zoom almost the entire reference view out of depth coverage.
+            alpha=-1,
         )
         self.r1, self.r2, self.p1, self.p2, self.q = result[:5]
         if abs(self.p2[0, 3]) < 1e-5 or self.p2[0, 3] >= 0:
@@ -168,6 +169,11 @@ class StereoRectifier:
                     cv2.CV_32FC1,
                 )
             )
+        w, h = output_size
+        self.valid_pixels = [
+            ((x >= 0) & (x < w - 1) & (y >= 0) & (y < h - 1)).astype(np.uint8)
+            for x, y in self.maps
+        ]
         # This rectifier is replaced whenever the calibration signature changes.
         w, h = left.size
         pixels = np.indices((h, w), dtype=np.float32)[::-1].transpose(1, 2, 0)
@@ -389,7 +395,12 @@ class StereoDepth:
             | (depth > DEPTH_MAX_M)
             | (disparity <= 0.5)
         )
-        invalid |= np.indices(disparity.shape)[1] - disparity < 0
+        y, x = np.indices(disparity.shape, dtype=np.float32)
+        right_valid = cv2.remap(
+            self.rectifier.valid_pixels[1], x - disparity, y, cv2.INTER_NEAREST,
+            borderMode=cv2.BORDER_CONSTANT, borderValue=0,
+        )
+        invalid |= (self.rectifier.valid_pixels[0] == 0) | (right_valid == 0)
         depth[invalid] = np.nan
         clean_disparity = disparity.copy()
         clean_disparity[invalid] = np.nan
@@ -399,6 +410,9 @@ class StereoDepth:
         _, reference = cv2.imencode(".jpg", left_frame)
         depth_mm = np.rint(np.nan_to_num(aligned, nan=0) * 1000).astype(np.uint16)
         _, png = cv2.imencode(".png", depth_mm, [cv2.IMWRITE_PNG_COMPRESSION, 1])
+        _, valid_mask = cv2.imencode(
+            ".png", np.isfinite(aligned).astype(np.uint8) * 255, [cv2.IMWRITE_PNG_COMPRESSION, 1]
+        )
         metadata = self.rectifier.metadata()
         valid = aligned[np.isfinite(aligned)]
         center = aligned[aligned.shape[0] // 2, aligned.shape[1] // 2]
@@ -412,6 +426,7 @@ class StereoDepth:
                 "depth_png_bytes": len(png),
                 "reference_jpeg_bytes": len(reference),
                 "preview_jpeg_bytes": len(jpeg),
+                "valid_mask_png_bytes": len(valid_mask),
                 "preview_space": "original_left",
                 "preview_range_m": [0.1, 8.0],
                 "center_depth_m": round(float(center), 2) if np.isfinite(center) else None,
@@ -422,7 +437,9 @@ class StereoDepth:
             }
         )
         metadata.update(details)
-        packet = pack(metadata, png.tobytes() + reference.tobytes() + jpeg.tobytes())
+        packet = pack(
+            metadata, png.tobytes() + reference.tobytes() + jpeg.tobytes() + valid_mask.tobytes()
+        )
         composite = render_with_depth(
             left_frame,
             aligned,
@@ -505,6 +522,12 @@ class StereoDepth:
                 ):
                     continue
                 published_ms = time.monotonic() * 1000
+                if not all(camera.depth_usable(published_ms) for camera in (left, right)):
+                    self.result = self.frame_result = None
+                    self.error = (
+                        "처리 중 보정 품질 검증이 취소됐어요. 기준판과 카메라 상태를 확인해 주세요."
+                    )
+                    continue
                 if published_ms - pair[0] > 350:
                     self.result = None
                     self.error = (

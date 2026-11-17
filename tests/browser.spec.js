@@ -1,4 +1,5 @@
 import { test, expect, chromium } from "@playwright/test";
+import { resolve } from "node:path";
 
 const phoneBrowsers = [];
 
@@ -6,7 +7,7 @@ async function phoneContext() {
   // Each phone has its own browser and camera service in actual use.
   const browser = await chromium.launch({
     channel: "chrome",
-    args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream"],
+    args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", `--use-file-for-fake-video-capture=${resolve("data/browser-camera.y4m")}`],
   });
 
   phoneBrowsers.push(browser);
@@ -173,29 +174,30 @@ test("guided checks advance and metric depth colors overlay the matching referen
     const state = {
       enabled: true, stage: "place", message: "같은 기준판을 바닥에 두고 카메라를 고정해 주세요.",
       progress: 0.5, coverage: [], outline: [], stable: true, can_act: true,
+      quality: [{ label: "별도 영상 오차", value: "0.34px · 기준 0.8px", passed: true }],
       action: "guide-floor", action_label: "카메라 고정 완료 · 바닥 맞추기",
       checks: [
         { id: "video", label: "새 영상 수신", done: true },
-        { id: "samples", label: "다양한 보정 사진 12/12장 이상", done: true },
-        { id: "intrinsics", label: "렌즈 보정 · 오차 1.5px 이하", done: true },
+        { id: "samples", label: "학습 12장 · 별도 검증 4장", done: true },
+        { id: "intrinsics", label: "별도 영상 오차 0.8px 이하", done: true },
         { id: "floor", label: "고정된 카메라의 바닥 위치 보정", done: false },
+        { id: "stereo", label: "좌우 정렬 · 기준판 크기 검증", done: false },
         { id: "background", label: "빈 배경 저장 · 추적 시작", done: false },
       ],
     };
 
     const guide = createGuide(async (action) => {
       if (action === "guide-floor") {
-        state.stage = "background";
-        state.message = "모든 카메라의 바닥 보정 후 사람이 화면에서 나가 주세요.";
-        state.progress = 0.75;
+        state.stage = "verify";
+        state.message = "좌우 동시 영상 검증을 기다려 주세요.";
+        state.progress = 0.5;
         state.checks[3].done = true;
-        state.action = "guide-background";
-        state.action_label = "사람 없는 빈 배경 저장 · 깊이 시작";
+        state.action = null;
       } else {
         state.stage = "ready";
         state.message = "보정 완료. 카메라를 고정한 채 유지해 주세요.";
         state.progress = 1;
-        state.checks[4].done = true;
+        state.checks[5].done = true;
         state.action = null;
       }
 
@@ -203,6 +205,20 @@ test("guided checks advance and metric depth colors overlay the matching referen
     });
 
     document.querySelector("#guide-fixture").append(guide);
+    guide.addEventListener("verified-pair", () => {
+      state.stage = "background";
+      state.message = "모든 카메라의 바닥 보정 후 사람이 화면에서 나가 주세요.";
+      state.progress = 0.75;
+      state.checks[4].done = true;
+      state.action = "guide-background";
+      state.action_label = "사람 없는 빈 배경 저장 · 깊이 시작";
+      state.quality.push(
+        { label: "바닥 고정 오차 RMS/p95", value: "0.30/0.58px · 기준 0.75/1.5px", passed: true },
+        { label: "좌우 정렬 오차 p95", value: "0.42px · 기준 1px", passed: true },
+        { label: "기준판 크기 오차 p95", value: "1.20% · 기준 5%", passed: true },
+      );
+      updateGuide(guide, state);
+    });
     updateGuide(guide, state);
     const canvas = document.createElement("canvas");
     canvas.width = 640;
@@ -221,27 +237,50 @@ test("guided checks advance and metric depth colors overlay the matching referen
     ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, 640, 480);
     const preview = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg"));
+    ctx.fillStyle = "white";
+    ctx.fillRect(0, 0, 640, 480);
+    ctx.fillStyle = "black";
+    ctx.fillRect(0, 400, 640, 80);
+    const mask = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
     const view = createDepthView(document.querySelector("#metric-preview"), document.querySelector("#metric-info"), document.querySelector("#metric-controls"));
-    const packet = await encodePacket({ depth_png_bytes: 0, reference_jpeg_bytes: reference.size, center_depth_m: 2.35, valid_percent: 85, processing_ms: 31 }, new Blob([reference, preview]));
+    const metadata = { depth_png_bytes: 0, reference_jpeg_bytes: reference.size, preview_jpeg_bytes: preview.size, valid_mask_png_bytes: mask.size, center_depth_m: 2.35, valid_percent: 85, processing_ms: 31 };
+    const packet = await encodePacket(metadata, new Blob([reference, preview, mask]));
     await view.receive(packet);
     document.querySelector("#metric-preview").addEventListener("clear-depth", () => view.clear("새 깊이 영상이 없어요."));
+    document.querySelector("#metric-preview").addEventListener("sparse-depth", async () => {
+      await view.receive(await encodePacket({ ...metadata, valid_percent: 0.4, center_depth_m: null }, new Blob([reference, preview, mask])));
+    });
   });
   await expect(page.locator("#metric-info")).toContainText("2.35m");
+  await expect(page.getByLabel("깊이 표시 방식")).toHaveValue("overlay");
 
   const pixels = await page.locator("#metric-preview").evaluate((canvas) => {
     const ctx = canvas.getContext("2d");
 
-    return [Array.from(ctx.getImageData(20, 20, 1, 1).data), Array.from(ctx.getImageData(620, 20, 1, 1).data)];
+    return [Array.from(ctx.getImageData(20, 20, 1, 1).data), Array.from(ctx.getImageData(620, 20, 1, 1).data), Array.from(ctx.getImageData(20, 440, 1, 1).data)];
   });
 
   expect(pixels[0][0]).toBeGreaterThan(pixels[0][2]);
   expect(pixels[1][2]).toBeGreaterThan(pixels[1][0]);
+  expect(pixels[2]).toEqual([208, 208, 208, 255]);
+  await page.getByLabel("깊이 표시 방식").selectOption("reference");
+  const original = await page.locator("#metric-preview").evaluate((canvas) => Array.from(canvas.getContext("2d").getImageData(20, 20, 1, 1).data));
+  expect(original).toEqual([208, 208, 208, 255]);
+  await page.getByLabel("깊이 표시 방식").selectOption("color");
+  const color = await page.locator("#metric-preview").evaluate((canvas) => Array.from(canvas.getContext("2d").getImageData(20, 20, 1, 1).data));
+  expect(color[0]).toBeGreaterThan(pixels[0][0]);
   await expect(page.locator("[data-check=floor]")).toHaveAttribute("data-done", "false");
   await page.getByRole("button", { name: "카메라 고정 완료 · 바닥 맞추기" }).click();
   await expect(page.locator("[data-check=floor]")).toHaveAttribute("data-done", "true");
+  await expect(page.locator(".scan-stage")).toHaveText("좌우 정렬 검증");
+  await expect(page.locator("[data-check=stereo]")).toHaveAttribute("data-done", "false");
+  await expect(page.getByRole("button", { name: "사람 없는 빈 배경 저장 · 깊이 시작" })).toBeHidden();
+  await page.locator(".calibration-guide").dispatchEvent("verified-pair");
+  await expect(page.locator("[data-check=stereo]")).toHaveAttribute("data-done", "true");
+  await expect(page.getByLabel("실측 품질 검사")).toContainText("0.42px");
   await expect(page.locator(".scan-instruction")).toContainText("사람이 화면에서 나가");
   await page.getByRole("button", { name: "사람 없는 빈 배경 저장 · 깊이 시작" }).click();
-  await expect(page.locator(".scan-stage")).toHaveText("보정 완료");
+  await expect(page.locator(".scan-stage")).toHaveText("보정 검증 통과");
   await page.getByLabel("깊이 표시 방식").selectOption("overlay");
   await expect(page.getByLabel("깊이 표시 방식")).toHaveValue("overlay");
 
@@ -252,8 +291,13 @@ test("guided checks advance and metric depth colors overlay the matching referen
   }
 
   await page.getByLabel("깊이 표시 방식").selectOption("reference");
+  await page.locator("#metric-preview").dispatchEvent("sparse-depth");
+  await expect(page.locator("#metric-info")).toContainText("깊이 측정 부족");
+  await expect(page.locator("#metric-info")).toContainText("0.4%");
   await page.locator("#metric-preview").dispatchEvent("clear-depth");
   await expect(page.locator("#metric-info")).toContainText("새 깊이 영상이 없어요");
+  const cleared = await page.locator("#metric-preview").evaluate((canvas) => canvas.getContext("2d").getImageData(20, 20, 1, 1).data[3]);
+  expect(cleared).toBe(0);
 });
 
 test("live monitor shows cameras depth and real REST success and failure logs", async ({ page }) => {

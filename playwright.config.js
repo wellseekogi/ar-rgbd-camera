@@ -12,7 +12,7 @@ export default defineConfig({
     permissions: ["camera"],
   },
   webServer: {
-    command: ".venv\\Scripts\\python.exe scripts/run.py --http-local",
+    command: ".venv\\Scripts\\python.exe tests/serve_browser.py",
     url: "http://127.0.0.1:8000/api/health",
     env: { LAVA_DISABLE_STEREO: "1", LAVA_SESSION_KEY: "browser-key" },
     reuseExistingServer: false,

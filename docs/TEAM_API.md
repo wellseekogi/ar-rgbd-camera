@@ -15,6 +15,10 @@ X-Session-Key: 접속키
 
 CPU와 GPU의 반환 형식은 같습니다. `depth_device`는 `cpu` 또는 `cuda`, `depth_backend`는 실제 계산 방식입니다. CPU는 `OpenCV StereoSGBM / CPU`, GPU는 `C-Fast-FoundationStereo / ONNX Runtime CUDA`입니다. CPU 방식의 유효 영역과 정확도가 GPU 모델과 같다는 보장은 없습니다. 기본 `auto`는 CUDA를 준비하지 못하면 CPU로 전환하며, `--depth-device cpu`로 명시할 수도 있습니다.
 
+깊이 반환에는 검증된 렌즈·바닥 자세·두 카메라의 동시 기준판 검증이 필요합니다. 기존의 `mode=play`나 자세 존재만으로는 충분하지 않습니다. 기준판의 새 관측이 품질 기준을 벗어나면 승인을 즉시 취소하고, 관측 불가가 10초를 넘으면 깊이를 중단해 HTTP 409를 반환합니다. 수동 보정·추적 API도 이 조건을 우회하지 못합니다. [보정 검사 기준](CALIBRATION_QUALITY.md)을 참고하세요.
+
+`GET /api/state`의 각 카메라 `quality`에는 `passed`, `generation`, `validated_ms`, `expires_ms`, `monitoring`, `message`와 통과 관측의 재투영·좌우 정렬·기준판 크기 오차가 포함됩니다. `monitoring=unobserved`이면 현재 고정 상태를 확인하지 못한 것입니다. 시각은 기존 규약과 같은 서버 단조 시계이며 Unix 시간이 아닙니다.
+
 | 필드 | 의미 |
 | --- | --- |
 | `schema`, `frame_id`, `captured_ms`, `age_ms` | 규약 `ar-lava.rgbd.v1`, 중복 프레임 확인용 ID, 촬영 시각 추정치와 서버 인코딩 요청 시점의 나이 |
@@ -90,9 +94,14 @@ $env:LAVA_SESSION_KEY = '서버 접속 키'
 [depth_png_bytes bytes PNG16]
 [reference_jpeg_bytes bytes JPEG]
 [preview_jpeg_bytes bytes JPEG]
+[valid_mask_png_bytes bytes PNG8]
 ```
 
 PNG는 **단일 채널 unsigned 16-bit**, 값에 **0.001**을 곱하면 미터입니다. **0은 미측정**입니다. PNG는 무손실입니다. 시각화 JPEG는 거리 계산에 사용하지 않습니다.
+
+마지막 유효 마스크는 원본과 같은 크기의 PNG8이며, 255는 측정됨, 0은 미측정입니다. 영상 위에 색상을 겹칠 때 이 무손실 마스크로 미측정 픽셀을 투명하게 처리합니다. 각 영상은 메타데이터에 적힌 바이트 길이로 구분합니다.
+
+일반 카메라의 `type=frame` 패킷은 별도로 `[composite_jpeg_bytes bytes 게임 합성 JPEG][reference_jpeg_bytes bytes 원본 JPEG]`를 담습니다. 상단 카메라 1·2 확인 화면은 두 번째 원본을, 아래 게임 화면은 첫 번째 합성 영상을 표시합니다. 원본은 폰이 보낸 같은 프레임의 JPEG 바이트를 그대로 사용합니다.
 
 메타데이터에는 아래 값이 있습니다.
 

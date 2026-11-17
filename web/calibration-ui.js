@@ -3,11 +3,14 @@ export function createGuide(onAction) {
   guide.className = "calibration-guide";
   guide.innerHTML = `
     <div class="scan-summary">
-      <canvas class="scan-ring" width="160" height="160" aria-label="보정 진행률"></canvas>
+      <canvas class="scan-ring" width="160" height="160" aria-label="검증 단계 완료율"></canvas>
       <div><strong class="scan-stage">자동 보정 안내</strong><p class="scan-instruction" role="status" aria-live="polite">카메라를 연결해 주세요.</p></div>
     </div>
     <div class="scan-coverage" aria-label="자동 촬영 요구사항"></div>
     <ul class="scan-checklist" aria-label="카메라 보정 체크리스트"></ul>
+    <ul class="scan-quality scan-checklist" aria-label="실측 품질 검사"></ul>
+    <p class="muted">100%는 모든 검증 단계 통과를 뜻해요. 거리 정확도 100%를 보장하지는 않아요.</p>
+    <p class="muted">인쇄한 기준판은 한 칸이 실제로 40mm인지 자로 확인해 주세요.</p>
     <button class="scan-action" type="button" hidden></button>`;
   const action = guide.querySelector("button");
   const errorText = document.createElement("p");
@@ -40,7 +43,7 @@ export function updateGuide(container, guide) {
     return;
   }
 
-  const names = { collect: "움직이며 렌즈 보정", place: "이제 카메라를 고정해 주세요", floor: "바닥 위치 확인 중", background: "빈 배경 확인", ready: "보정 완료", manual: "수동 보정" };
+  const names = { collect: "렌즈 품질 검사", place: "이제 카메라를 고정해 주세요", floor: "바닥 고정 검증", verify: "좌우 정렬 검증", background: "빈 배경 확인", ready: "보정 검증 통과", manual: "수동 보정" };
   container.dataset.stage = guide.stage;
   container.querySelector(".scan-stage").textContent = names[guide.stage];
   const instruction = container.querySelector(".scan-instruction");
@@ -66,11 +69,11 @@ export function updateGuide(container, guide) {
   ctx.font = "600 28px system-ui";
   ctx.textAlign = "center";
   ctx.fillText(guide.stage === "ready" ? "✓" : `${Math.round(guide.progress * 100)}%`, 80, 90);
-  canvas.setAttribute("aria-label", `보정 진행률 ${Math.round(guide.progress * 100)}%`);
+  canvas.setAttribute("aria-label", `검증 단계 완료율 ${Math.round(guide.progress * 100)}%`);
   const list = container.querySelector(".scan-checklist");
 
-  if (!list.children.length) {
-    for (const check of guide.checks) {
+  for (const check of guide.checks) {
+    if (!list.querySelector(`[data-check="${check.id}"]`)) {
       const item = document.createElement("li");
       item.dataset.check = check.id;
       list.append(item);
@@ -81,6 +84,16 @@ export function updateGuide(container, guide) {
     const item = list.querySelector(`[data-check="${check.id}"]`);
     item.textContent = `${check.done ? "✓" : "○"} ${check.label}`;
     item.dataset.done = String(check.done);
+  }
+
+  const quality = container.querySelector(".scan-quality");
+  quality.replaceChildren();
+
+  for (const metric of guide.quality || []) {
+    const item = document.createElement("li");
+    item.textContent = `${metric.label} · ${metric.value}`;
+    item.dataset.done = String(metric.passed);
+    quality.append(item);
   }
 
   const coverage = container.querySelector(".scan-coverage");

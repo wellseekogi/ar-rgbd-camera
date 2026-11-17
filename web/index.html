@@ -35,14 +35,14 @@
         <div id="pairing-codes" class="camera-panels"></div>
       </details>
       <section class="live-monitor" aria-labelledby="monitor-title">
-        <div class="title-row"><div><h2 id="monitor-title">두 카메라와 깊이를 한눈에</h2><p class="muted">카메라 1이 반환 영상의 기준이고, 카메라 2는 깊이 계산을 도와요.</p></div><a href="#rest-log">REST 응답 로그 보기 ↓</a></div>
+        <div class="title-row"><div><h2 id="monitor-title">현실 영상 위에 실시간 깊이</h2><p class="muted">카메라 1 영상 위에 거리를 색으로 표시해요. 두 카메라는 같은 장면을 보도록 나란히 고정해 주세요.</p></div><a href="#rest-log">REST 응답 로그 보기 ↓</a></div>
         <div class="live-grid">
           <article><h3>01 <span>카메라 1 · 기준 영상</span></h3><canvas id="live-cam1" width="640" height="480" aria-label="카메라 1 실시간 영상"></canvas><p id="live-status-cam1" class="muted">카메라 1 연결 대기</p></article>
-          <article><h3>02 <span>카메라 2 · 깊이 보조</span></h3><canvas id="live-cam2" width="640" height="480" aria-label="카메라 2 실시간 영상"></canvas><p id="live-status-cam2" class="muted">카메라 2 연결 대기</p></article>
-          <article><h3>Z <span>실시간 깊이 · 거리별 색상</span></h3><canvas id="depth-canvas" width="640" height="480" aria-label="거리별 색상 깊이맵 · 중앙 십자선 거리 표시"></canvas><p id="depth-frame-info" class="depth-metrics" role="status">좌우 카메라를 보정하고 추적을 시작해 주세요.</p></article>
+          <article><h3>02 <span>카메라 2 · 거리 계산용 원본</span></h3><canvas id="live-cam2" width="640" height="480" aria-label="카메라 2 실시간 영상"></canvas><p id="live-status-cam2" class="muted">카메라 2 연결 대기</p></article>
+          <article><h3>Z <span>현실 영상 + 깊이 색상</span></h3><canvas id="depth-canvas" width="640" height="480" aria-label="현실 영상 위 깊이 색상 · 중앙 십자선 거리 표시"></canvas><p id="depth-frame-info" class="depth-metrics" role="status">좌우 카메라를 보정하고 추적을 시작해 주세요.</p></article>
         </div>
         <div class="monitor-settings"><div id="depth-controls"></div><div><ul id="depth-readiness" class="scan-checklist" aria-label="깊이 계산 준비 체크리스트"></ul><button id="download-depth" type="button">깊이·기준 영상·보정값 받기</button></div></div>
-        <p class="muted">카메라 영상은 각각 최신 수신 화면이에요. 깊이와 같은 시점의 원본은 ‘깊이 보기 → 원본 영상’으로 확인해요.</p>
+        <p class="muted">카메라 2의 다른 시점과 비교해 거리를 계산해요. 두 원본 화면에는 게임판을 그리지 않아요. 깊이 색상은 카메라 1의 같은 시점 영상에 맞춰 표시해요.</p>
       </section>
       <section id="rest-log" aria-label="REST API 실시간 로그"></section>
       <div class="workspace">
@@ -81,7 +81,7 @@
       <div id="phone-guide"></div>
       <details><summary>이동·렌즈 변경 후 다시 보정</summary><button id="phone-restart" type="button">자동 보정 처음부터 시작하기</button></details>
       <p class="muted">기준판은 한 칸 40mm, 전체 200×280mm로 출력해요. 렌즈 보정 중에는 움직이고, 바닥 보정 뒤에는 고정해 주세요. 이동·렌즈·줌 변경 시 다시 보정해야 해요.</p>
-      <div id="phone-depth"><h2>실시간 깊이 · 거리별 색상</h2><canvas id="phone-canvas" width="640" height="480" aria-label="카메라 1의 거리별 색상 깊이맵"></canvas><p id="phone-depth-info" class="depth-metrics" role="status">카메라 1·2의 보정이 끝나면 깊이를 보여줘요.</p><div id="phone-depth-controls"></div></div>
+      <div id="phone-depth"><h2>현실 영상 + 깊이 색상</h2><canvas id="phone-canvas" width="640" height="480" aria-label="카메라 1의 현실 영상 위 깊이 색상"></canvas><p id="phone-depth-info" class="depth-metrics" role="status">카메라 1·2의 보정이 끝나면 깊이를 보여줘요.</p><div id="phone-depth-controls"></div></div>
       <p id="phone-metrics" class="muted"></p>
     </section>
   </main>

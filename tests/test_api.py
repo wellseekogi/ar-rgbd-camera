@@ -1,8 +1,10 @@
 import asyncio
 
+import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
+from ar_lava.calibration import CameraCalibration
 from ar_lava.server import Viewer, create_app
 
 
@@ -67,3 +69,44 @@ def test_latest_only_viewer_queue_is_bounded():
         assert viewer.pending == {"cam1": 99, "cam2": 99}
 
     asyncio.run(check())
+
+
+@pytest.mark.parametrize(
+    "action", ["play", "background", "guide-background", "guide-floor", "extrinsics"]
+)
+def test_legacy_low_rms_pose_cannot_bypass_quality_checks(app, action):
+    from ar_lava.server import now_ms
+
+    camera = app.state.hub.cameras["cam1"]
+    camera.connected, camera.profile = True, "legacy"
+    camera.frame = np.zeros((480, 640, 3), np.uint8)
+    camera.capture_ms = now_ms()
+    camera.calibration = CameraCalibration(
+        "legacy", (640, 480), np.array([[500., 0, 320], [0, 500, 240], [0, 0, 1]]),
+        np.zeros(5), 0.01, np.zeros((3, 1)), np.array([[0.], [0.], [1.]]),
+    )
+    with TestClient(app) as client:
+        response = client.post(f"/api/cameras/cam1/{action}", headers={"X-Session-Key": "test-key"})
+    assert response.status_code == 400
+    assert not camera.depth_usable(now_ms())
+
+
+def test_failed_new_intrinsics_invalidates_active_pose(app, monkeypatch):
+    from ar_lava.server import now_ms
+
+    camera = app.state.hub.cameras["cam1"]
+    camera.connected, camera.profile, camera.mode = True, "test", "play"
+    camera.frame = np.zeros((480, 640, 3), np.uint8)
+    camera.capture_ms = now_ms()
+
+    def reject():
+        raise ValueError("holdout rejected")
+
+    monkeypatch.setattr(camera.calibrator, "solve_intrinsics", reject)
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/cameras/cam1/intrinsics", headers={"X-Session-Key": "test-key"}
+        )
+    assert response.status_code == 400
+    assert camera.mode == "calibration" and camera.calibration is None
+    assert not camera.floor_validated and not camera.pair_quality

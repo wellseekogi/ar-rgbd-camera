@@ -296,19 +296,20 @@ function updateState(next) {
       liveStatus.textContent = `${connection} · ${camera.fps} FPS · ${calibration}`;
     }
 
-    info.textContent = `${camera.transport || "연결 전"} · ${camera.fps} FPS · 수신 ${camera.received_frames}장\n${calibration} · 사진 ${camera.samples}/12\n처리 ${camera.processing_ms}ms · 왕복 ${camera.rtt_ms ?? "–"}ms · 영상 나이 ${camera.age_ms ?? "–"}ms`;
+    info.textContent = `${camera.transport || "연결 전"} · ${camera.fps} FPS · 수신 ${camera.received_frames}장\n${calibration} · 유효 사진 ${camera.samples}/16장 이상\n처리 ${camera.processing_ms}ms · 왕복 ${camera.rtt_ms ?? "–"}ms · 영상 나이 ${camera.age_ms ?? "–"}ms`;
     panel.querySelector("output").textContent = camera.error;
     guideStates.set(camera.id, camera.guide);
     updateGuide(guides.get(camera.id), camera.guide);
   }
 
-  const pairReady = next.cameras.slice(0, 2).every((camera) => camera.connection_status === "receiving" && camera.calibrated && camera.mode === "play");
+  const pairReady = next.cameras.slice(0, 2).every((camera) => camera.connection_status === "receiving" && camera.calibrated && camera.mode === "play" && camera.quality.passed);
 
   const depthChecklist = element("depth-readiness", HTMLUListElement);
 
   const readiness = [
     ["카메라 1 · 바닥 보정과 추적 시작", next.cameras[0].calibrated && next.cameras[0].mode === "play"],
     ["카메라 2 · 바닥 보정과 추적 시작", next.cameras[1].calibrated && next.cameras[1].mode === "play"],
+    ["동시 기준판 · 좌우 정렬 검증", next.cameras.every((camera) => camera.quality.passed)],
     ["깊이 모델 준비", next.depth.ready],
     ["새 깊이 영상 수신", pairReady && Boolean(next.tracking.capture_ms)],
   ];
@@ -357,7 +358,7 @@ function drawSelectedCamera() {
 
 async function receiveCameraFrame(buffer) {
   const packet = decodePacket(buffer);
-  const bitmap = await createImageBitmap(packet.blob);
+  const bitmap = await createImageBitmap(packet.blob.slice(0, packet.header.composite_jpeg_bytes));
 
   if (!active) {
     bitmap.close();
@@ -374,9 +375,15 @@ async function receiveCameraFrame(buffer) {
   const live = document.getElementById(`live-${id}`);
 
   if (live instanceof HTMLCanvasElement) {
-    live.width = bitmap.width;
-    live.height = bitmap.height;
-    live.getContext("2d").drawImage(bitmap, 0, 0);
+    const reference = await createImageBitmap(packet.blob.slice(packet.header.composite_jpeg_bytes));
+
+    if (active) {
+      live.width = reference.width;
+      live.height = reference.height;
+      live.getContext("2d").drawImage(reference, 0, 0);
+    }
+
+    reference.close();
   }
 
   drawSelectedCamera();

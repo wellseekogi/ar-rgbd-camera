@@ -11,6 +11,7 @@ import threading
 import time
 from io import BytesIO
 from pathlib import Path
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
@@ -19,7 +20,7 @@ from fastapi.testclient import TestClient
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from ar_lava.calibration import CameraCalibration  # noqa: E402
+from ar_lava.calibration import QUALITY_VERSION, CameraCalibration  # noqa: E402
 from ar_lava.protocol import unpack  # noqa: E402
 from ar_lava.server import create_app, now_ms  # noqa: E402
 
@@ -42,6 +43,8 @@ def main():
     baseline = float(lines[1])
     app = create_app(ROOT / "data/smoke", token="local-smoke-key")
     hub = app.state.hub
+    # Official rectified input has known geometry; physical calibration is tested separately.
+    hub.calibration_check = SimpleNamespace(update=lambda cameras, now: None)
     headers = {"X-Session-Key": "local-smoke-key"}
     stopped = threading.Event()
 
@@ -63,8 +66,14 @@ def main():
                 0,
                 np.zeros((3, 1)),
                 np.array([[-baseline * i], [0.0], [0.0]]),
+                quality={"version": QUALITY_VERSION, "intrinsics": {"passed": True}},
             )
             camera.connected, camera.mode = True, "play"
+            camera.profile = camera.calibration.profile
+            camera.floor_validated = True
+            camera.pair_quality = {
+                "passed": True, "generation": camera.generation, "expires_ms": now_ms() + 60_000,
+            }
             camera.clock.rtt_ms = 1
             camera.sample_frame = frame
         supplier = threading.Thread(target=supply_frames, daemon=True)
@@ -119,6 +128,7 @@ def main():
                 "median_depth_m": float(np.nanmedian(depth)),
                 "output_shape": list(depth.shape),
                 "people_required": False,
+                "physical_calibration_validation": "not_exercised_known_geometry_fixture",
                 "http_npz": "passed",
                 "websocket_png16": "passed",
                 "http_rgbd_json": "passed",

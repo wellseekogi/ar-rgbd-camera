@@ -1,13 +1,14 @@
 import base64
 import json
 from io import BytesIO
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from ar_lava.calibration import CameraCalibration
+from ar_lava.calibration import QUALITY_VERSION, CameraCalibration
 from ar_lava.rgbd import encode_rgbd
 from ar_lava.server import create_app
 from ar_lava.stereo import StereoRectifier
@@ -26,8 +27,14 @@ def frame_result(hub, stamp=1000, seq=7):
             0.1,
             np.zeros((3, 1)),
             np.array([[-index * 0.2], [0.0], [2.0]]),
+            quality={"version": QUALITY_VERSION, "intrinsics": {"passed": True}},
         )
         camera.connected, camera.mode = True, "play"
+        camera.profile = camera.calibration.profile
+        camera.floor_validated = True
+        camera.pair_quality = {
+            "passed": True, "generation": camera.generation, "expires_ms": stamp + 100_000,
+        }
         camera.capture_ms, camera.clock.rtt_ms = stamp, 1
         camera.sample_frame = np.full((2, 6, 3), 120, np.uint8)
     left, right = hub.cameras["cam1"], hub.cameras["cam2"]
@@ -69,6 +76,8 @@ def rgbd_app(tmp_path, monkeypatch):
     monkeypatch.setenv("LAVA_DISABLE_STEREO", "1")
     monkeypatch.setattr("ar_lava.server.now_ms", lambda: 1050)
     app = create_app(data_dir=tmp_path, token="test-key")
+    # Known geometry is injected to test serialization/expiry, not physical calibration.
+    app.state.hub.calibration_check = SimpleNamespace(update=lambda cameras, now: None)
     frame = frame_result(app.state.hub)
     app.state.hub.stereo.frame_result = frame
     app.state.hub.stereo.result = frame["tracking"]

@@ -6,7 +6,7 @@ import cv2
 import numpy as np
 import pytest
 
-from ar_lava.calibration import BOARD, Calibrator, CameraCalibration
+from ar_lava.calibration import BOARD, QUALITY_VERSION, Calibrator, CameraCalibration
 from ar_lava.game import Game, GameConfig
 from ar_lava.protocol import ClockSync, frame_header, pack, unpack
 from ar_lava.render import render_with_depth
@@ -69,7 +69,7 @@ def test_calibration_roundtrip_and_charuco_detection(tmp_path):
     assert calibrator.add(image, "test") == 1
     with pytest.raises(ValueError, match="비슷"):
         calibrator.add(image, "test")
-    with pytest.raises(ValueError, match="12장"):
+    with pytest.raises(ValueError, match="16장"):
         calibrator.solve_intrinsics()
 
 
@@ -82,8 +82,8 @@ def test_rectification_depth_and_original_alignment():
     )
     aligned = rectifier.align_to_original(disparity)
     assert aligned.shape == (480, 640)
-    # alpha=0 rectification crops the vertical FOV when the output aspect ratio changes.
-    assert 0.79 < np.isfinite(aligned).mean() < 0.81
+    # Changing the processing aspect ratio must not crop away the reference image.
+    assert np.isfinite(aligned).mean() > 0.99
     assert np.isfinite(aligned[60:420, 2:638]).all()
     np.testing.assert_allclose(aligned[240, 320], 2, atol=1e-5)
     disparity[:] = np.nan
@@ -98,6 +98,39 @@ def test_depth_does_not_require_a_person():
     tracking = tracking_from_disparity(rectifier, np.ones((192, 320)), None, None, 123)
     assert tracking["capture_ms"] == 123
     assert tracking["valid"] is False
+
+
+def test_rectification_preserves_view_for_different_phone_lenses_and_forward_offset():
+    left = CameraCalibration(
+        "portrait", (640, 640),
+        np.array([
+            [649.3638877607118, 0, 344.6365585274027],
+            [0, 487.00940744092696, 312.6783179473671], [0, 0, 1],
+        ]),
+        np.array([
+            0.36860025497289894, -4.18422615027899, -0.004051517877614388,
+            0.022831820638340296, 18.85261982805207,
+        ]), 0.75,
+        np.array([[-1.091436381503839], [0.06926130577151791], [0.050447676022978]]),
+        np.array([[-0.031273789719700774], [0.1386908374147759], [0.9657224313972789]]),
+    )
+    right = CameraCalibration(
+        "landscape", (640, 480),
+        np.array([
+            [539.403569047227, 0, 315.4603925253102],
+            [0, 540.233110459914, 236.07959814867309], [0, 0, 1],
+        ]),
+        np.array([
+            0.1579291481985904, -0.05109618842785507, -0.0017714704229151034,
+            -0.006050462394801194, -0.9012573192306176,
+        ]), 0.12,
+        np.array([[-1.0497440874430704], [0.0679540033029321], [0.044398179388343555]]),
+        np.array([[-0.1714553215215524], [0.1640480184435527], [1.0501092902165055]]),
+    )
+    rectifier = StereoRectifier(left, right)
+    x, y = rectifier.original_maps
+    assert 0 <= x[320, 320] < 320 and 0 <= y[320, 320] < 192
+    assert ((x >= 0) & (x < 320) & (y >= 0) & (y < 192)).mean() > 0.4
 
 
 def test_depth_colors_use_fixed_metric_stops_and_black_for_invalid_depth():
@@ -133,8 +166,17 @@ def test_depth_preview_and_reference_share_original_coordinates_and_metric_metad
     assert preview.shape == frame.shape
     assert result["metadata"]["preview_space"] == "original_left"
     assert result["metadata"]["center_depth_m"] == 2
-    assert 70 < result["metadata"]["valid_percent"] < 80
+    # The left edge has no right-camera correspondence, even with a dense model output.
+    assert np.isnan(result["depth_m"][:, :45]).all()
+    assert 88 < result["metadata"]["valid_percent"] < 94
     assert result["metadata"]["preview_range_m"] == [0.1, 8]
+    metadata, payload = unpack(result["packet"])
+    start = sum(
+        metadata[key] for key in ("depth_png_bytes", "reference_jpeg_bytes", "preview_jpeg_bytes")
+    )
+    mask = cv2.imdecode(np.frombuffer(payload[start:], np.uint8), cv2.IMREAD_GRAYSCALE)
+    assert len(payload[start:]) == metadata["valid_mask_png_bytes"]
+    np.testing.assert_array_equal(mask, np.isfinite(result["depth_m"]).astype(np.uint8) * 255)
     json.dumps(result["metadata"], allow_nan=False)
 
 
@@ -253,11 +295,22 @@ def test_camera_without_person_can_supply_depth_and_reconnect_invalidates(tmp_pa
     camera = Camera("cam1", tmp_path)
     camera.calibration = calibrated_pair()[0]
     camera.connected, camera.mode = True, "play"
+    camera.profile = camera.calibration.profile
     camera.sample_frame = np.zeros((480, 640, 3), dtype=np.uint8)
     camera.capture_ms = 100
     camera.clock.rtt_ms = 10
-    assert camera.landmarks is None and camera.depth_usable(150)
+    assert camera.landmarks is None and not camera.depth_usable(150)
+    camera.calibration.quality = {
+        "version": QUALITY_VERSION, "intrinsics": {"passed": True},
+    }
+    camera.floor_validated = True
+    assert not camera.depth_usable(150)
+    camera.pair_quality = {"passed": True, "generation": camera.generation, "expires_ms": 200}
+    assert camera.depth_usable(150)
+    assert not camera.depth_usable(201)
     assert not camera.depth_usable(500)
+    camera.generation += 1
+    assert not camera.depth_usable(150)
     camera.calibration.save(camera.path)
     reconnected = Camera("cam1", tmp_path)
     assert reconnected.calibration is not None and not reconnected.calibration.ready

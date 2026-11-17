@@ -167,3 +167,41 @@ def test_depth_loop_replaces_geometry_cache_after_recalibration(change, monkeypa
     np.testing.assert_array_equal(rectifiers[1].floor_z, fresh.floor_z)
     for actual, expected in zip(rectifiers[1].original_maps, fresh.original_maps, strict=True):
         np.testing.assert_array_equal(actual, expected)
+
+
+def test_inference_result_is_not_published_after_quality_is_revoked(monkeypatch):
+    from ar_lava import stereo
+
+    left, right = camera_pair((640, 480), False)
+    frame = np.full((480, 640, 3), 120, np.uint8)
+    approved = {"value": True, "computed": False}
+    cameras = {
+        name: SimpleNamespace(
+            calibration=calibration, generation=0, capture_ms=time.monotonic() * 1000,
+            seq=0, sample_frame=frame, sample_segmentation=None, landmarks=None,
+            depth_usable=lambda now: approved["value"],
+        )
+        for name, calibration in (("cam1", left), ("cam2", right))
+    }
+
+    def disparity(a, b):
+        approved["value"], approved["computed"] = False, True
+        return np.full((192, 320), 20, np.float32)
+
+    engine = StereoDepth(
+        SimpleNamespace(cameras=cameras, game=Game(), depth_viewers=set()), "unused"
+    )
+    engine.enabled = True
+    monkeypatch.setattr(
+        stereo, "create_depth_model", lambda path: SimpleNamespace(disparity=disparity)
+    )
+
+    async def next_frame(delay):
+        if approved["computed"]:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(stereo.asyncio, "sleep", next_frame)
+    with pytest.raises(asyncio.CancelledError):
+        asyncio.run(engine.run())
+    assert approved["computed"]
+    assert engine.frame_result is None and engine.result is None
