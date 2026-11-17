@@ -1,6 +1,7 @@
 """Rectification and dense stereo depth. Camera 1 is left, camera 2 is right."""
 
 import asyncio
+import logging
 import os
 import time
 from pathlib import Path
@@ -15,6 +16,49 @@ MODEL_SHA256 = "2c79bbb274dc0aef687a8732b987077e9e3aa26ff9dd653141cda48c57dad5d3
 MAX_PAIR_SKEW_MS = 40
 DEPTH_MIN_M = 0.1
 DEPTH_MAX_M = 15.0
+LOG = logging.getLogger("ar_lava")
+
+
+class CpuStereo:
+    name = "OpenCV StereoSGBM"
+    device = "cpu"
+    backend = "OpenCV StereoSGBM / CPU"
+
+    def __init__(self):
+        self.matcher = cv2.StereoSGBM_create(
+            minDisparity=0,
+            numDisparities=96,
+            blockSize=5,
+            P1=8 * 25,
+            P2=32 * 25,
+            disp12MaxDiff=1,
+            uniquenessRatio=10,
+            speckleWindowSize=50,
+            speckleRange=2,
+            mode=cv2.STEREO_SGBM_MODE_SGBM_3WAY,
+        )
+
+    def disparity(self, left, right):
+        left = cv2.cvtColor(left, cv2.COLOR_BGR2GRAY)
+        right = cv2.cvtColor(right, cv2.COLOR_BGR2GRAY)
+        disparity = self.matcher.compute(left, right).astype(np.float32) / 16
+        disparity[disparity <= 0] = np.nan
+        return disparity
+
+
+def create_depth_model(model_path, device=None):
+    device = device or os.environ.get("LAVA_DEPTH_DEVICE", "auto")
+    if device not in ("auto", "cpu", "cuda"):
+        raise ValueError("깊이 장치는 auto, cpu, cuda 중 하나여야 해요.")
+    if device == "cpu":
+        return CpuStereo()
+    try:
+        return FastFoundationStereo(model_path)
+    except Exception as error:
+        if device == "cuda":
+            raise
+        LOG.info("CUDA를 사용할 수 없어 CPU StereoSGBM으로 전환합니다: %s", error)
+        return CpuStereo()
 
 
 def colorize_depth(depth_m):
@@ -30,25 +74,38 @@ def colorize_depth(depth_m):
 
 
 class FastFoundationStereo:
-    def __init__(self, model_path):
+    name = "C-Fast-FoundationStereo"
+
+    def __init__(self, model_path, device="cuda"):
         import onnxruntime as ort
 
-        ort.preload_dlls()
+        if device not in ("cpu", "cuda"):
+            raise ValueError("모델 실행 장치는 cpu 또는 cuda여야 해요.")
+        if device == "cuda" and "CUDAExecutionProvider" not in ort.get_available_providers():
+            raise RuntimeError("CUDA 실행 공급자가 없어요.")
+        if device == "cuda":
+            ort.preload_dlls()
         options = ort.SessionOptions()
         options.intra_op_num_threads = 2
         options.log_severity_level = 3
-        self.session = ort.InferenceSession(
-            str(model_path),
-            sess_options=options,
-            providers=[
+        providers = ["CPUExecutionProvider"]
+        if device == "cuda":
+            providers.insert(
+                0,
                 (
                     "CUDAExecutionProvider",
                     {"gpu_mem_limit": 2 * 1024**3, "cudnn_conv_algo_search": "HEURISTIC"},
-                )
-            ],
+                ),
+            )
+        self.session = ort.InferenceSession(
+            str(model_path),
+            sess_options=options,
+            providers=providers,
         )
-        if "CUDAExecutionProvider" not in self.session.get_providers():
+        if device == "cuda" and "CUDAExecutionProvider" not in self.session.get_providers():
             raise RuntimeError("Fast-FoundationStereo의 CUDA 실행을 준비하지 못했어요.")
+        self.device = device
+        self.backend = f"{self.name} / ONNX Runtime {device.upper()}"
         inputs = [item.name for item in self.session.get_inputs()]
         if inputs != ["left_image", "right_image"]:
             raise ValueError("공식 C-Fast-FoundationStereo ONNX 입력 형식과 달라요.")
@@ -263,7 +320,8 @@ class StereoDepth:
 
     def info(self):
         return {
-            "backend": "C-Fast-FoundationStereo / ONNX Runtime CUDA",
+            "backend": getattr(self.model, "backend", "깊이 계산 준비 중"),
+            "device": getattr(self.model, "device", None),
             "ready": self.model is not None,
             "error": self.error,
             "processing_ms": round(self.processing_ms, 1),
@@ -291,7 +349,7 @@ class StereoDepth:
             "feet": [],
             "joints": {},
             "capture_ms": None,
-            "source": "C-Fast-FoundationStereo",
+            "source": getattr(self.model, "name", "깊이 계산 준비 중"),
             "reason": self.error or "새 좌우 깊이 영상을 기다리고 있어요.",
         }
 
@@ -316,6 +374,7 @@ class StereoDepth:
             right_points,
             captured,
         )
+        tracking["source"] = getattr(self.model, "name", "C-Fast-FoundationStereo")
         xyz = cv2.reprojectImageTo3D(disparity, self.rectifier.q)
         depth = xyz[..., 2]
         invalid = (
@@ -342,6 +401,8 @@ class StereoDepth:
                 "type": "depth",
                 "captured_ms": captured,
                 "processing_ms": self.processing_ms,
+                "depth_backend": getattr(self.model, "backend", "C-Fast-FoundationStereo"),
+                "depth_device": getattr(self.model, "device", "cuda"),
                 "depth_png_bytes": len(png),
                 "reference_jpeg_bytes": len(reference),
                 "preview_jpeg_bytes": len(jpeg),
@@ -376,9 +437,7 @@ class StereoDepth:
             self.error = "검사용 실행: 깊이 모델 비활성"
             return
         try:
-            if not self.model_path.is_file():
-                raise RuntimeError("깊이 모델이 없어요. setup.ps1을 실행해 주세요.")
-            self.model = await asyncio.to_thread(FastFoundationStereo, self.model_path)
+            self.model = await asyncio.to_thread(create_depth_model, self.model_path)
             self.error = "좌우 카메라를 보정하고 추적을 시작해 주세요."
         except Exception as error:
             self.error = str(error)
@@ -436,7 +495,9 @@ class StereoDepth:
                 published_ms = time.monotonic() * 1000
                 if published_ms - pair[0] > 350:
                     self.result = None
-                    self.error = "깊이 처리 결과가 350ms를 넘었어요. 다른 GPU 작업을 줄여 주세요."
+                    self.error = (
+                        "깊이 처리 결과가 350ms를 넘었어요. 장치 부하와 촬영 상태를 확인해 주세요."
+                    )
                     continue
                 self.frame_result = result
                 self.result = result["tracking"]

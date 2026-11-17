@@ -1,9 +1,11 @@
-"""Exercise real CUDA inference + HTTP/WebSocket output with official rectified sample images.
+"""Exercise CPU or CUDA depth + HTTP/WebSocket output with official rectified sample images.
 
 This is a software integration check, not physical phone calibration or accuracy validation.
 """
 
+import argparse
 import json
+import os
 import sys
 import threading
 import time
@@ -23,6 +25,10 @@ from ar_lava.server import create_app, now_ms  # noqa: E402
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--depth-device", choices=("auto", "cpu", "cuda"), default="auto")
+    args = parser.parse_args()
+    os.environ["LAVA_DEPTH_DEVICE"] = args.depth_device
     left = cv2.imdecode(
         np.frombuffer((ROOT / "data/benchmark/left.png").read_bytes(), np.uint8), cv2.IMREAD_COLOR
     )
@@ -80,6 +86,16 @@ def main():
                 metadata = json.loads(str(result["metadata"]))
                 assert metadata["units"] == "meters"
                 assert metadata["camera_id"] == "cam1"
+                assert metadata["depth_device"] == hub.stereo.model.device
+            rgbd = None
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                rgbd = client.get("/api/rgbd/frame", headers=headers)
+                if rgbd.status_code == 200:
+                    break
+                time.sleep(0.02)
+            assert rgbd is not None and rgbd.status_code == 200, hub.stereo.info()
+            assert rgbd.json()["depth_device"] == hub.stereo.model.device
             with client.websocket_connect("/ws") as websocket:
                 websocket.send_json({"role": "depth", "token": "local-smoke-key"})
                 header, payload = unpack(websocket.receive_bytes())
@@ -91,7 +107,13 @@ def main():
             assert hub.cameras["cam1"].landmarks is None
             assert hub.cameras["cam2"].landmarks is None
             report = {
-                "cuda_providers": hub.stereo.model.session.get_providers(),
+                "backend": hub.stereo.model.backend,
+                "device": hub.stereo.model.device,
+                "providers": (
+                    hub.stereo.model.session.get_providers()
+                    if hasattr(hub.stereo.model, "session")
+                    else ["OpenCV CPU"]
+                ),
                 "model_ms": hub.stereo.processing_ms,
                 "valid_depth_fraction": float(np.isfinite(depth).mean()),
                 "median_depth_m": float(np.nanmedian(depth)),
@@ -99,8 +121,11 @@ def main():
                 "people_required": False,
                 "http_npz": "passed",
                 "websocket_png16": "passed",
+                "http_rgbd_json": "passed",
             }
-            (ROOT / "data/depth-smoke.json").write_text(json.dumps(report, indent=2))
+            (ROOT / f"data/depth-smoke-{hub.stereo.model.device}.json").write_text(
+                json.dumps(report, indent=2)
+            )
             (ROOT / "data/sample-depth-preview.jpg").write_bytes(hub.stereo.visualization)
             print(json.dumps(report), flush=True)
         finally:

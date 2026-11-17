@@ -6,7 +6,7 @@ cd /d "%~dp0"
 title AR Floor Is Lava
 
 if not exist ".venv\Scripts\python.exe" goto setup
-".venv\Scripts\python.exe" -c "import fastapi, uvicorn, aiortc, cv2, mediapipe, onnxruntime, cryptography" >nul 2>&1
+".venv\Scripts\python.exe" -c "import fastapi, uvicorn, aiortc, cv2, mediapipe, cryptography" >nul 2>&1
 if errorlevel 1 goto setup
 goto prepare
 

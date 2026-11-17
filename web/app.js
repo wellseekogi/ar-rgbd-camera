@@ -251,7 +251,7 @@ function updateState(next) {
     pairingCollapsed = true;
   }
 
-  document.querySelector("#depth-status").textContent = next.depth.error || `스테레오 깊이 · ${next.depth.resolution.join("×")} · 처리 ${next.depth.processing_ms}ms`;
+  document.querySelector("#depth-status").textContent = `${next.depth.backend} · ${next.depth.error || `${next.depth.resolution.join("×")} · 처리 ${next.depth.processing_ms}ms`}`;
   document.querySelector("#time").textContent = `${next.game.remaining_s.toFixed(1)}초`;
   document.querySelector("#lives").textContent = String(next.game.lives);
   const names = { ready: "게임 준비", playing: "플레이 중", paused: "추적 확인 중 · 시간 정지", won: "생존 성공", lost: "게임 오버" };

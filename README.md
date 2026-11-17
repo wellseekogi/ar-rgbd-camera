@@ -6,7 +6,7 @@
 
 **`start.cmd`를 더블클릭하면 됩니다.** 필요한 환경이 없으면 설치하고, 모델·인증서를 준비한 뒤 서버가 응답하면 웹 화면을 자동으로 엽니다. 노트북 화면은 자동 로그인되고, 화면 맨 위에 카메라별 QR 3개가 자동 표시됩니다. 서버 창은 켜 두세요. 종료하려면 창에서 `Ctrl+C`를 누릅니다. 최초 HTTPS 인증서 신뢰 등록과 실물 카메라 보정은 아래 절차가 필요합니다.
 
-Windows, Python 3.13, NVIDIA GPU와 최신 호환 드라이버가 필요합니다. 현재 컴퓨터의 RTX 3050 Ti Laptop GPU 4GB에서 CUDA 추론을 확인했습니다. 첫 설치에는 CUDA/cuDNN 패키지와 모델을 다운로드하므로 디스크·다운로드 용량이 큽니다.
+Windows, Python 3.13에서 CPU만으로도 실행할 수 있습니다. 기본 설치에는 CUDA/cuDNN 패키지가 필요하지 않습니다. CPU는 OpenCV StereoSGBM, CUDA가 준비된 GPU는 C-Fast-FoundationStereo를 사용합니다. 두 방식의 정확도가 같다는 뜻은 아니며 CPU에서는 무늬가 적거나 반사되는 영역의 깊이가 비어 있을 수 있습니다.
 
 ```powershell
 cd C:\증강현실
@@ -26,7 +26,7 @@ IP를 직접 지정하려면 `./setup.ps1 -LaptopIp 192.168.0.10`처럼 실행�
 
 ### UI 확인용과 연결용 실행 파일
 
-저장소: [wellseekogi/ar-rgbd-camera](https://github.com/wellseekogi/ar-rgbd-camera) (비공개).
+저장소: [wellseekogi/ar-rgbd-camera](https://github.com/wellseekogi/ar-rgbd-camera) (공개).
 
 환경 준비 후 프로젝트 루트에서 둘 중 **하나만** 실행합니다. 같은 8443 포트를 사용하므로 동시에 실행하지 않습니다.
 
@@ -38,9 +38,31 @@ IP를 직접 지정하려면 `./setup.ps1 -LaptopIp 192.168.0.10`처럼 실행�
 .venv/Scripts/python.exe run_api.py
 ```
 
+### CPU / GPU 선택
+
+기본값은 `auto`입니다. CUDA 초기화가 가능하면 GPU 모델을 사용하고, 없거나 초기화에 실패하면 CPU StereoSGBM으로 전환합니다. CPU 경로에는 ONNX 모델이나 ONNX Runtime 패키지가 필요하지 않습니다. 그래픽카드가 없는 PC에서는 기존처럼 `start.cmd`를 실행하면 됩니다.
+
+```powershell
+# GPU가 있는 PC에서도 CPU로 실행
+.venv/Scripts/python.exe run_ui.py --depth-device cpu
+.venv/Scripts/python.exe run_api.py --depth-device cpu
+
+# NVIDIA GPU 기능 설치 후 강제로 GPU 실행, CUDA 준비 실패 시 오류 표시
+.\setup.ps1 -UseCuda
+.venv/Scripts/python.exe run_ui.py --depth-device cuda
+```
+
+실행 명령은 둘 중 하나씩 사용합니다. `LAVA_DEPTH_DEVICE=cpu` 환경 변수로도 고정할 수 있습니다. GPU 패키지는 `requirements-gpu.txt`에 분리했으며, `requirements-lock.txt`는 기존 CUDA 측정 환경의 참고 스냅샷이므로 CPU 설치에는 사용하지 않습니다. 새 CPU 설치는 `requirements.txt`를 사용합니다. GPU 패키지가 이미 설치된 환경을 CPU 모드로 실행할 때 해당 패키지를 삭제할 필요는 없습니다.
+
+화면 상태와 REST 응답의 `depth_backend`, `depth_device`에서 실제 계산 방식을 확인할 수 있습니다. RGB·0~1 float32 Z·유효 마스크·선택적 사람 마스크의 형식, 카메라 보정 필요 조건, 350ms 만료 기준은 그대로입니다. CPU의 0~96픽셀 미만 시차 탐색 범위 밖이거나 대응점을 찾지 못한 깊이는 무효로 반환합니다. 근거리·반사·무늬 없는 표면의 정확도는 실제 장비에서 확인해야 합니다.
+
+C-Fast-FoundationStereo 자체도 CPU에서 실행해 봤지만 320×192 단일 추론이 약 1974.3ms로, 현재 350ms 기준을 넘었습니다. 그래서 실제 CPU 서비스의 기본 계산에는 그 모델 대신 빠른 StereoSGBM을 사용합니다. 단순히 CUDA를 CPU로 바꾼 동일 모델·동일 정확도 경로가 아닙니다.
+
 두 파일은 공통 서버와 모델을 사용하므로 **각각 독립 실행 가능한 단일 파일 프로그램은 아닙니다.** 저장소 전체와 모델·환경 준비가 필요합니다. API 모드에서도 폰의 카메라 연결·보정 페이지는 필요하므로 해당 기능을 유지합니다. 외부 프로그램은 `GET /api/rgbd/frame`을 호출하며, 단건 수신 예제는 `scripts/fetch_rgbd.py`입니다.
 
 UI에서는 카메라 1·2 영상과 깊이맵을 나란히 표시합니다. 두 영상이 들어오면 QR 영역은 자동으로 접히며 다시 펼쳐 새 기기를 연결할 수 있습니다. 실제 REST 호출은 응답 후 1초 간격으로 수행하며 **HTTP 상태, 요청·응답 시간, 응답 바이트 크기, 프레임 ID와 JSON 필드**를 펼쳐 볼 수 있습니다. 최근 20개 기록을 유지하고 큰 Base64는 표시만 축약합니다. API가 409를 반환하면 보정·연결·GPU 지연 안내도 그대로 표시합니다. 로그만 일시정지·비우기 할 수 있고 영상은 계속 표시합니다.
+
+### 카메라 배치와 보정 순서
 
 - 좌우 두 폰은 같은 바닥과 플레이어를 볼 수 있게 **단단히 고정**합니다. 일반 후면 렌즈를 권장하며, 줌·렌즈·위치를 바꾸면 다시 보정합니다. 정해진 최적 카메라 간격은 실측으로 결정해야 합니다. 코드의 0.05~3m 검사는 사용 범위 제한이며 정확도 보증이 아닙니다.
 - 화면에서 기준판 PNG를 받습니다. **전체 200×280mm, 한 칸 40mm**로 인쇄해 실제 크기를 자로 확인합니다. 출력물에 맞춰 실제 치수를 바꾸려면 `ar_lava/calibration.py`의 `SQUARE_M`, `MARKER_M`을 함께 바꿉니다.

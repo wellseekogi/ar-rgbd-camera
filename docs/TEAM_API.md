@@ -13,6 +13,8 @@ X-Session-Key: 접속키
 
 응답은 `application/json`, `Cache-Control: no-store`입니다. 이미지와 배열을 **한 HTTP 응답**에 묶습니다. JSON의 숫자 배열 대신 Base64로 감싼 **실제 float32 바이트**를 반환하여 자료형을 유지하고 일반적인 JSON 클라이언트에서도 받을 수 있게 했습니다.
 
+CPU와 GPU의 반환 형식은 같습니다. `depth_device`는 `cpu` 또는 `cuda`, `depth_backend`는 실제 계산 방식입니다. CPU는 `OpenCV StereoSGBM / CPU`, GPU는 `C-Fast-FoundationStereo / ONNX Runtime CUDA`입니다. CPU 방식의 유효 영역과 정확도가 GPU 모델과 같다는 보장은 없습니다. 기본 `auto`는 CUDA를 준비하지 못하면 CPU로 전환하며, `--depth-device cpu`로 명시할 수도 있습니다.
+
 | 필드 | 의미 |
 | --- | --- |
 | `schema`, `frame_id`, `captured_ms`, `age_ms` | 규약 `ar-lava.rgbd.v1`, 중복 프레임 확인용 ID, 촬영 시각 추정치와 서버 인코딩 요청 시점의 나이 |
@@ -70,7 +72,7 @@ $env:LAVA_SESSION_KEY = '서버 접속 키'
 
 실시간 사용자는 이 예제의 `decode_frame()`처럼 디코딩해 메모리에서 바로 정합하면 됩니다. C#/Unity에서는 Base64를 해제해 little-endian `float` 배열로 읽고 동일한 복원식을 적용합니다.
 
-**현재 성능 제한:** 직전 GPU 통합 검사에서 350ms를 넘는 처리 지연이 확인됐습니다. 그 상태에서는 이 API도 409를 반환합니다. 아래의 과거 GPU 통과 기록이나 새 REST 계약 검사 통과를 현재 실시간 성능 보장으로 해석하지 마세요.
+**성능 제한:** 장치와 장면에 따라 350ms를 넘는 처리 지연이 생기면 이 API도 409를 반환합니다. CPU StereoSGBM은 공식 정지 샘플로 RGB-D REST 200 응답을 확인했지만 실제 폰 영상의 전체 지연·정확도를 보장하는 것은 아닙니다. 과거 GPU 통과 기록이나 REST 계약 검사 통과를 모든 환경의 실시간 성능 보장으로 해석하지 마세요.
 
 ## 실시간 수신
 

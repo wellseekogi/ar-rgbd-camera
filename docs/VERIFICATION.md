@@ -86,3 +86,19 @@ UI 확인용은 루트 `run_ui.py`, 브라우저 자동 실행 없이 같은 RES
 - `node node_modules/@playwright/test/cli.js test --reporter=line --grep 'three phone|live monitor|guided checks|desktop shows three QR'`: **4 passed**, exit 0. 두 카메라 영상 캔버스·수신 상태, 기존 QR 표시와 자동 접힘, 깊이 색상 전환, REST의 HTTP 200·409·JSON·Base64 표시 축약, 로그 중지 후 요청 중단·비우기·재시작, 1440px·390px 가로 넘침을 포함합니다. REST 성공 응답은 UI 테스트 fixture이며 실제 GPU 성공을 뜻하지 않습니다. 전체 브라우저 검사 중 기존 가상 카메라 재연결 실패는 이번 변경에서 해결하지 않았습니다.
 
 REST 로그는 화면 표시용이고 응답 형식이나 350ms 유효시간을 완화하지 않습니다. 현재 GPU 지연 상태에서는 실제 REST에 409가 표시될 수 있습니다.
+
+## CPU 지원 추가 (2026-11-17)
+
+`--depth-device auto|cpu|cuda`, 환경 변수 `LAVA_DEPTH_DEVICE`를 지원합니다. auto는 CUDA 모델 시작에 실패하거나 관련 패키지가 없으면 CPU StereoSGBM으로 전환하고, 강제 cuda는 실패를 숨기지 않습니다. 기본 requirements에는 ONNX Runtime/CUDA를 요구하지 않고 GPU 추가 설치를 `requirements-gpu.txt`와 `setup.ps1 -UseCuda`로 분리했습니다. CPU 준비는 신경망 깊이 모델을 다운로드하지 않습니다. 기존 CUDA lock 파일은 과거 환경의 스냅샷입니다.
+
+같은 신경망을 CPUExecutionProvider로 직접 실행한 탐색 검사에서 320×192 단일 추론이 1974.3ms였습니다. 따라서 서비스 CPU 기본값은 빠른 OpenCV StereoSGBM입니다. 원본 영상 정합·미터 복원·0~1 정규화·마스크·외부 보정·350ms 제한을 유지하고 실제 backend/device를 상태·깊이 메타데이터·REST JSON에 넣었습니다. 알고리즘이 바뀌므로 출력 정확도가 CUDA 모델과 같다는 뜻은 아닙니다.
+
+실제 계산 검증:
+
+- `scripts/smoke_depth.py --depth-device cpu`: exit 0. 기존 공식 좌우 샘플을 실제 CPU로 처리하여 HTTP NPZ, HTTP RGB-D JSON 200, WebSocket PNG16을 확인했습니다. 출력 960×540, 유효 비율 59.11%, 중앙값 깊이 약 0.5324m, 해당 실행의 모델 계산 6.6257ms였습니다. 유효 비율은 정확도 점수가 아닙니다.
+- `scripts/benchmark_depth.py --depth-device cpu`: 첫 준비 실행 후 5회 측정. 320×192 중앙값 2.7484ms, 640×384 중앙값 11.6744ms. 정렬·압축·네트워크를 제외한 계산 단독이며 실시간 FPS를 보장하지 않습니다.
+- CUDA 모델도 변경된 로더로 실제 실행했습니다. 320×192 중앙값 147.8481ms, 640×384 중앙값 515.4816ms. 이는 GPU 경로 유지 검사이며 통합 API 지연 보장은 아닙니다.
+
+CPU 알고리즘의 시차 단위(1/16 픽셀) 변환, 알려진 12픽셀 이동 복원, 빈 화면의 무효 깊이, f=500·기선=0.2m·시차=50픽셀인 합성 평면의 2m 복원, CUDA 자동 선택·실패 시 전환·강제 CUDA 오류·잘못된 설정·ONNX 패키지와 파일이 없는 CPU 시작·CPU 준비 시 신경망 다운로드 생략을 검사합니다. 실제 폰 캘리브레이션과 CPU PC별 실사용 정확도는 미검증입니다. GPU 때보다 CPU의 무효 영역이 늘 수 있고 근거리·무늬 없는 영역·반사면에 주의해야 합니다.
+
+최종 코드에서 `.venv/Scripts/python.exe -m pytest -q`는 **61 passed**, Ruff·`npm run lint`·`npm run typecheck`는 exit 0입니다. 기존 선택한 Chrome 시나리오 4개도 **4 passed**, exit 0입니다. CPU 통합 검사는 실제 계산을 사용하고, 브라우저 REST 성공 응답 검사는 UI fixture를 사용한다는 차이를 유지합니다. GPU 모델의 CPU 탐색 검사·계산 단독 벤치마크와 실제 장비의 전체 왕복 지연을 구별합니다.

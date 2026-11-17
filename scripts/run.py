@@ -1,4 +1,5 @@
 import argparse
+import os
 import ssl
 import sys
 import threading
@@ -43,12 +44,19 @@ def main(open_browser=False):
     parser = argparse.ArgumentParser()
     parser.add_argument("--http-local", action="store_true", help="Local browser tests only")
     parser.add_argument(
+        "--depth-device",
+        choices=("auto", "cpu", "cuda"),
+        default=os.environ.get("LAVA_DEPTH_DEVICE", "auto"),
+        help="auto: CUDA if available, otherwise CPU StereoSGBM",
+    )
+    parser.add_argument(
         "--open-browser",
         action="store_true",
         default=open_browser,
         help="Open the page after startup",
     )
     args = parser.parse_args()
+    os.environ["LAVA_DEPTH_DEVICE"] = args.depth_device
     app = create_app()
     token = app.state.hub.token
     print(f"접속 키: {token}", flush=True)

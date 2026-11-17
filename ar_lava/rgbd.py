@@ -25,6 +25,8 @@ def encode_rgbd(result, server_ms):
         "schema": "ar-lava.rgbd.v1",
         "frame_id": frame_id,
         "camera_id": "cam1",
+        "depth_backend": metadata.get("depth_backend", "C-Fast-FoundationStereo"),
+        "depth_device": metadata.get("depth_device", "cuda"),
         "source_camera_ids": ["cam1", "cam2"],
         "captured_ms": metadata["captured_ms"],
         "server_ms": server_ms,

@@ -22,6 +22,7 @@ def main():
         "start.ps1",
         "start.cmd",
         "requirements.txt",
+        "requirements-gpu.txt",
         "requirements-dev.txt",
         "requirements-lock.txt",
         "pyproject.toml",

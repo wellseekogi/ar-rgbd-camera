@@ -5,6 +5,7 @@ import datetime
 import hashlib
 import ipaddress
 import json
+import os
 import sys
 import urllib.request
 from pathlib import Path
@@ -132,6 +133,11 @@ def certificates(ips):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--ip", action="append", default=[])
+    parser.add_argument(
+        "--depth-device",
+        choices=("auto", "cpu", "cuda"),
+        default=os.environ.get("LAVA_DEPTH_DEVICE", "auto"),
+    )
     args = parser.parse_args()
     model = ROOT / "models/pose_landmarker_lite.task"
     model.parent.mkdir(exist_ok=True)
@@ -143,13 +149,21 @@ def main():
         temporary.replace(model)
     digest = hashlib.sha256(model.read_bytes()).hexdigest()
     stereo_path = ROOT / "models/c_fast_foundationstereo.onnx"
-    if not stereo_path.exists():
+    use_neural = args.depth_device == "cuda"
+    if args.depth_device == "auto":
+        try:
+            import onnxruntime as ort
+
+            use_neural = "CUDAExecutionProvider" in ort.get_available_providers()
+        except ImportError:
+            use_neural = False
+    if use_neural and not stereo_path.exists():
         temporary = stereo_path.with_suffix(".download")
         urllib.request.urlretrieve(STEREO_URL, temporary)
         if hashlib.sha256(temporary.read_bytes()).hexdigest() != STEREO_SHA256:
             raise RuntimeError("Stereo model checksum mismatch")
         temporary.replace(stereo_path)
-    if hashlib.sha256(stereo_path.read_bytes()).hexdigest() != STEREO_SHA256:
+    if use_neural and hashlib.sha256(stereo_path.read_bytes()).hexdigest() != STEREO_SHA256:
         raise RuntimeError("Stereo model checksum mismatch")
     (ROOT / "models/PROVENANCE.json").write_text(
         json.dumps(
@@ -159,6 +173,7 @@ def main():
                     "url": STEREO_URL,
                     "sha256": STEREO_SHA256,
                     "license": "NVIDIA Open Model Agreement",
+                    "required_for_cpu": False,
                 },
             },
             indent=2,

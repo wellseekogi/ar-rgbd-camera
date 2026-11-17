@@ -11,7 +11,13 @@ from ar_lava.game import Game, GameConfig
 from ar_lava.protocol import ClockSync, frame_header, pack, unpack
 from ar_lava.render import render_with_depth
 from ar_lava.rtc import read_stamp
-from ar_lava.stereo import StereoDepth, StereoRectifier, colorize_depth, tracking_from_disparity
+from ar_lava.stereo import (
+    CpuStereo,
+    StereoDepth,
+    StereoRectifier,
+    colorize_depth,
+    tracking_from_disparity,
+)
 
 
 def calibrated_pair():
@@ -130,6 +136,26 @@ def test_depth_preview_and_reference_share_original_coordinates_and_metric_metad
     assert 70 < result["metadata"]["valid_percent"] < 80
     assert result["metadata"]["preview_range_m"] == [0.1, 8]
     json.dumps(result["metadata"], allow_nan=False)
+
+
+def test_cpu_stereo_geometry_returns_metric_depth_for_a_known_plane():
+    left, right = calibrated_pair()
+
+    class Scene:
+        game = Game()
+
+    engine = StereoDepth(Scene(), "unused.onnx")
+    engine.rectifier = StereoRectifier(left, right)
+    engine.model = CpuStereo()
+    image = np.random.default_rng(7).integers(0, 256, (480, 640, 3), np.uint8)
+    shifted = np.zeros_like(image)
+    shifted[:, :-50] = image[:, 50:]  # f=500, baseline=0.2m, Z=2m => 50 pixels.
+    result = engine.compute(image, shifted, None, None, 123, {})
+    depth = result["depth_m"]
+    assert np.isfinite(depth).mean() > 0.3
+    assert np.nanmedian(depth) == pytest.approx(2, abs=0.08)
+    assert result["metadata"]["depth_device"] == "cpu"
+    assert result["tracking"]["source"] == "OpenCV StereoSGBM"
 
 
 def test_video_stamp_survives_jpeg_codec():
