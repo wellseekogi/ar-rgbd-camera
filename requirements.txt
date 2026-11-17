@@ -1,8 +1,2 @@
-fastapi==0.163.1
-uvicorn[standard]==0.54.0
-mediapipe==0.10.35
-opencv-contrib-python==4.13.0.92
-cryptography==50.0.2
-Pillow==13.0.0
-aiortc==1.16.0
+-r requirements-cpu.txt
 onnxruntime-gpu[cuda,cudnn]==1.32.0
