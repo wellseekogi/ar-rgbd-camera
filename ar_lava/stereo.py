@@ -47,7 +47,7 @@ class CpuStereo:
 
 
 def create_depth_model(model_path, device=None):
-    device = device or os.environ.get("LAVA_DEPTH_DEVICE", "auto")
+    device = device or os.environ.get("LAVA_DEPTH_DEVICE", "cpu")
     if device not in ("auto", "cpu", "cuda"):
         raise ValueError("깊이 장치는 auto, cpu, cuda 중 하나여야 해요.")
     if device == "cpu":

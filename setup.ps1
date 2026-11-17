@@ -8,7 +8,7 @@ if (-not (Test-Path -LiteralPath '.venv\Scripts\python.exe')) {
 $requirementsFile = if ($UseCuda) { 'requirements-gpu.txt' } else { 'requirements.txt' }
 & '.\.venv\Scripts\python.exe' -m pip install -r $requirementsFile
 if ($LASTEXITCODE -ne 0) { throw '패키지 설치 실패' }
-$prepareDevice = if ($UseCuda) { 'cuda' } elseif ($env:LAVA_DEPTH_DEVICE) { $env:LAVA_DEPTH_DEVICE } else { 'auto' }
+$prepareDevice = if ($UseCuda) { 'cuda' } elseif ($env:LAVA_DEPTH_DEVICE) { $env:LAVA_DEPTH_DEVICE } else { 'cpu' }
 if ($LaptopIp) {
     & '.\.venv\Scripts\python.exe' scripts/prepare.py --ip $LaptopIp --depth-device $prepareDevice
 } else {

@@ -1,5 +1,7 @@
 # AR Floor Is Lava · 실시간 깊이 서버
 
+이 문서는 `cpu` 브랜치 기준입니다. GPU가 설치돼 있어도 기본 실행은 CPU StereoSGBM이며 CUDA 패키지를 기본 설치하지 않습니다. GPU 기본 버전은 `gpu` 브랜치, 자동 선택 공통 버전은 `main` 브랜치에서 관리합니다. `run_ui.py`와 `run_api.py` 모두 이 기본값을 따릅니다.
+
 핸드폰의 웹 카메라 영상 두 개를 노트북으로 보내고, 왼쪽 카메라 영상에 정렬된 **픽셀별 깊이맵**을 반환하는 프로토타입입니다. 세 번째 카메라는 선택적인 측면 미리보기입니다. 깊이는 사람 검출 성공 여부와 무관하게 계산합니다.
 
 ## 실행
@@ -40,7 +42,7 @@ IP를 직접 지정하려면 `./setup.ps1 -LaptopIp 192.168.0.10`처럼 실행�
 
 ### CPU / GPU 선택
 
-기본값은 `auto`입니다. CUDA 초기화가 가능하면 GPU 모델을 사용하고, 없거나 초기화에 실패하면 CPU StereoSGBM으로 전환합니다. CPU 경로에는 ONNX 모델이나 ONNX Runtime 패키지가 필요하지 않습니다. 그래픽카드가 없는 PC에서는 기존처럼 `start.cmd`를 실행하면 됩니다.
+이 브랜치의 기본값은 `cpu`입니다. CPU 경로에는 ONNX 모델이나 ONNX Runtime 패키지가 필요하지 않습니다. 그래픽카드가 없는 PC에서는 기존처럼 `start.cmd`를 실행하면 됩니다. 명시적으로 `--depth-device auto`를 지정할 때만 CUDA 우선·CPU 대체 실행을 사용합니다.
 
 ```powershell
 # GPU가 있는 PC에서도 CPU로 실행

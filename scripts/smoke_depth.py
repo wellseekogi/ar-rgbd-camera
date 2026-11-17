@@ -26,7 +26,7 @@ from ar_lava.server import create_app, now_ms  # noqa: E402
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--depth-device", choices=("auto", "cpu", "cuda"), default="auto")
+    parser.add_argument("--depth-device", choices=("auto", "cpu", "cuda"), default="cpu")
     args = parser.parse_args()
     os.environ["LAVA_DEPTH_DEVICE"] = args.depth_device
     left = cv2.imdecode(

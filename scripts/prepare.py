@@ -136,7 +136,7 @@ def main():
     parser.add_argument(
         "--depth-device",
         choices=("auto", "cpu", "cuda"),
-        default=os.environ.get("LAVA_DEPTH_DEVICE", "auto"),
+        default=os.environ.get("LAVA_DEPTH_DEVICE", "cpu"),
     )
     args = parser.parse_args()
     model = ROOT / "models/pose_landmarker_lite.task"

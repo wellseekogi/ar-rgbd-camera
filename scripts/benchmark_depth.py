@@ -18,7 +18,7 @@ def main():
     parser.add_argument("--left", required=True)
     parser.add_argument("--right", required=True)
     parser.add_argument("--output", default="data/depth-benchmark.json")
-    parser.add_argument("--depth-device", choices=("auto", "cpu", "cuda"), default="auto")
+    parser.add_argument("--depth-device", choices=("auto", "cpu", "cuda"), default="cpu")
     args = parser.parse_args()
     model = create_depth_model(ROOT / "models/c_fast_foundationstereo.onnx", args.depth_device)
     left = cv2.imdecode(np.frombuffer(Path(args.left).read_bytes(), np.uint8), cv2.IMREAD_COLOR)
