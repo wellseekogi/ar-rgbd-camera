@@ -4,7 +4,7 @@
 
 ## 정합 담당자용 REST API · 0~1 float32
 
-**계산 입력은 카메라 1·2, 반환 시점은 카메라 1 하나**입니다. 여러 영상을 이어 붙이지 않습니다. 반환 RGB의 픽셀 `(u,v)`와 깊이 `[v,u]`가 같은 원본 카메라 1 좌표를 가집니다. 카메라 3은 이 깊이 계산에 사용하지 않습니다.
+**계산 입력은 카메라 1·2, 반환 시점은 카메라 1 하나**입니다. 여러 영상을 이어 붙이지 않습니다. 반환 RGB의 픽셀 `(u,v)`와 깊이 `[v,u]`가 같은 원본 카메라 1 좌표를 가집니다. 등록 가능한 카메라는 `cam1`, `cam2` 두 대입니다.
 
 ```http
 GET /api/rgbd/frame
@@ -156,7 +156,7 @@ with np.load(BytesIO(response.content), allow_pickle=False) as result:
 
 카메라 정보의 `guide`와 WSS 카메라 처리 응답 헤더의 `guide`는 같은 자동 보정 상태입니다. `stage`는 `collect`, `place`, `floor`, `background`, `ready`, `manual`이며, `checks`와 `coverage`의 `done`이 실제 만족 여부를 나타냅니다. `message`는 다음 동작, `outline`은 정규화된 기준판 외곽 네 점, `action`과 `can_act`는 사용자 확인 버튼입니다. 안내는 각 카메라의 첫 영상부터 독립적으로 시작됩니다.
 
-`POST /api/cameras/{cam1|cam2|cam3}/{action}`에 `X-Session-Key` 인증을 사용합니다.
+`POST /api/cameras/{cam1|cam2}/{action}`에 `X-Session-Key` 인증을 사용합니다.
 
 - `guide-floor`: 유효한 렌즈 보정과 새 영상이 필요합니다. 사용자가 최종 고정을 확인한 뒤 안정된 기준판 영상으로 외부 보정합니다.
 - `guide-background`: 연결된 모든 카메라의 외부 보정과 추적 모델이 필요합니다. 사용자가 빈 화면을 확인한 뒤 배경을 저장하고 추적을 시작합니다.
@@ -165,7 +165,7 @@ with np.load(BytesIO(response.content), allow_pickle=False) as result:
 
 기존 수동 보정 액션도 유지합니다. 수동 액션이 성공하면 자동 수집을 중지합니다. 재접속 시 내부 보정은 프로필·크기 일치 여부 확인 후 재사용하며 외부 보정과 배경은 새로 확인합니다.
 
-기본 화면은 HTTPS/WSS로 TCP 8443을 사용합니다. 노트북 자동 로그인 및 카메라 초대 QR의 접속 키는 URL fragment에만 포함되고 페이지 로드 직후 주소에서 제거합니다. `GET /api/pairing`, `GET /api/pairing/{cam1|cam2|cam3}.png?address=노트북IP`는 `X-Session-Key` 인증이 필요합니다.
+기본 화면은 HTTPS/WSS로 TCP 8443을 사용합니다. 노트북 자동 로그인 및 카메라 초대 QR의 접속 키는 URL fragment에만 포함되고 페이지 로드 직후 주소에서 제거합니다. `GET /api/pairing`, `GET /api/pairing/{cam1|cam2}.png?address=노트북IP`는 `X-Session-Key` 인증이 필요합니다.
 
 `GET /api/state`와 viewer WebSocket의 카메라 정보:
 

@@ -41,6 +41,23 @@ def test_websocket_state_auth_and_invalid_camera(app):
             assert websocket.receive()["code"] == 1008
 
 
+def test_only_two_cameras_are_registered_and_third_camera_is_rejected(app):
+    headers = {"X-Session-Key": "test-key"}
+    with TestClient(app) as client:
+        assert set(app.state.hub.cameras) == {"cam1", "cam2"}
+        state = client.get("/api/state", headers=headers).json()
+        assert {camera["id"] for camera in state["cameras"]} == {"cam1", "cam2"}
+        assert client.post("/api/cameras/cam3/sample", headers=headers).status_code == 404
+        assert (
+            client.get("/api/pairing/cam3.png?address=127.0.0.1", headers=headers).status_code
+            == 404
+        )
+        assert client.post("/api/rtc/camera/cam3", headers=headers).status_code == 404
+        with client.websocket_connect("/ws") as websocket:
+            websocket.send_json({"role": "camera", "camera_id": "cam3", "token": "test-key"})
+            assert websocket.receive()["code"] == 1008
+
+
 def test_latest_only_viewer_queue_is_bounded():
     async def check():
         viewer = Viewer()

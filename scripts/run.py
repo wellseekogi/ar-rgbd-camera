@@ -61,7 +61,7 @@ def main(open_browser=False):
     token = app.state.hub.token
     print(f"접속 키: {token}", flush=True)
     print("노트북: https://localhost:8443", flush=True)
-    print("핸드폰 3대: 같은 Wi-Fi에서 https://노트북의IP:8443, 카메라 1·2·3 선택", flush=True)
+    print("핸드폰 2대: 같은 Wi-Fi에서 https://노트북의IP:8443, 카메라 1·2 선택", flush=True)
     options = {}
     if not args.http_local:
         for path in (ROOT / "certs/server.pem", ROOT / "certs/server-key.pem"):

@@ -41,7 +41,7 @@ const floorCanvas = element("floor-canvas", HTMLCanvasElement);
 
 const statusText = element("connection", HTMLSpanElement);
 
-const cameraIds = ["cam1", "cam2", "cam3"];
+const cameraIds = ["cam1", "cam2"];
 
 const frames = new Map();
 
@@ -183,7 +183,7 @@ for (const id of cameraIds) {
   panel.className = "camera-panel";
   panel.id = `panel-${id}`;
   const title = document.createElement("h3");
-  title.textContent = `카메라 ${id.slice(-1)}${id === "cam3" ? " · 보조" : ""}`;
+  title.textContent = `카메라 ${id.slice(-1)}`;
   const connection = document.createElement("strong");
   connection.className = "connection-state";
   connection.textContent = "연결 대기";
@@ -781,7 +781,7 @@ async function showPairingCodes() {
     pairingUrls.push(url);
     const card = document.createElement("article");
     const title = document.createElement("h3");
-    title.textContent = `카메라 ${id.slice(-1)}${id === "cam1" ? " · 왼쪽" : id === "cam2" ? " · 오른쪽" : " · 보조"}`;
+    title.textContent = `카메라 ${id.slice(-1)}${id === "cam1" ? " · 왼쪽" : " · 오른쪽"}`;
     const image = document.createElement("img");
     image.alt = `${title.textContent} 접속 QR`;
     image.src = url;
@@ -822,7 +822,7 @@ async function loadPairing() {
     }
 
     await showPairingCodes();
-    status.textContent = "카메라 1은 왼쪽, 카메라 2는 오른쪽, 카메라 3은 보조 핸드폰으로 스캔해 주세요.";
+    status.textContent = "왼쪽 핸드폰은 카메라 1, 오른쪽 핸드폰은 카메라 2 QR을 스캔해 주세요.";
   } catch (error) {
     status.textContent = `${error.message} ‘QR 새로고침’을 눌러 다시 시도해 주세요.`;
   } finally {

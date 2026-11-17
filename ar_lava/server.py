@@ -432,7 +432,7 @@ def create_app(data_dir=None, model_path=None, token=None):
                 hub.game.cell(foot) is None for foot in hub.tracking["feet"]
             ):
                 raise HTTPException(
-                    409, "보정된 카메라 2대 이상에서 게임판 안의 양발을 확인해 주세요."
+                    409, "보정된 카메라 2대에서 게임판 안의 양발을 확인해 주세요."
                 )
             hub.game.start()
         elif action == "stop":

@@ -4,7 +4,7 @@ import struct
 
 MAX_PACKET = 1_500_000
 MAX_HEADER = 4096
-CAMERA_IDS = {"cam1", "cam2", "cam3"}
+CAMERA_IDS = {"cam1", "cam2"}
 MAX_AGE_MS = 350
 
 
