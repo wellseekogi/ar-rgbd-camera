@@ -1,5 +1,7 @@
 # AR Floor Is Lava · 실시간 깊이 서버
 
+버전은 브랜치별로 관리합니다. [cpu](https://github.com/wellseekogi/ar-rgbd-camera/tree/cpu)는 CPU StereoSGBM 기본 실행·CUDA 없는 기본 설치 버전, [gpu](https://github.com/wellseekogi/ar-rgbd-camera/tree/gpu)는 NVIDIA CUDA 모델 기본 실행·GPU 패키지 설치 버전입니다. 현재 `main`은 CPU/GPU 자동 선택 공통 버전입니다. 각 브랜치의 `run_ui.py`·`run_api.py`는 해당 버전의 기본값을 따릅니다.
+
 핸드폰의 웹 카메라 영상 두 개를 노트북으로 보내고, 왼쪽 카메라 영상에 정렬된 **픽셀별 깊이맵**을 반환하는 프로토타입입니다. 세 번째 카메라는 선택적인 측면 미리보기입니다. 깊이는 사람 검출 성공 여부와 무관하게 계산합니다.
 
 ## 실행
