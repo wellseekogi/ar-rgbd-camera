@@ -46,7 +46,7 @@ def main(open_browser=False):
     parser.add_argument(
         "--depth-device",
         choices=("auto", "cpu", "cuda"),
-        default=os.environ.get("LAVA_DEPTH_DEVICE", "auto"),
+        default=os.environ.get("LAVA_DEPTH_DEVICE", "cuda"),
         help="auto: CUDA if available, otherwise CPU StereoSGBM",
     )
     parser.add_argument(

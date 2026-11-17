@@ -5,3 +5,4 @@ opencv-contrib-python==4.13.0.92
 cryptography==50.0.2
 Pillow==13.0.0
 aiortc==1.16.0
+onnxruntime-gpu[cuda,cudnn]==1.32.0

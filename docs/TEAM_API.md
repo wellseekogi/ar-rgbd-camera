@@ -13,7 +13,7 @@ X-Session-Key: 접속키
 
 응답은 `application/json`, `Cache-Control: no-store`입니다. 이미지와 배열을 **한 HTTP 응답**에 묶습니다. JSON의 숫자 배열 대신 Base64로 감싼 **실제 float32 바이트**를 반환하여 자료형을 유지하고 일반적인 JSON 클라이언트에서도 받을 수 있게 했습니다.
 
-CPU와 GPU의 반환 형식은 같습니다. `depth_device`는 `cpu` 또는 `cuda`, `depth_backend`는 실제 계산 방식입니다. CPU는 `OpenCV StereoSGBM / CPU`, GPU는 `C-Fast-FoundationStereo / ONNX Runtime CUDA`입니다. CPU 방식의 유효 영역과 정확도가 GPU 모델과 같다는 보장은 없습니다. 기본 `auto`는 CUDA를 준비하지 못하면 CPU로 전환하며, `--depth-device cpu`로 명시할 수도 있습니다.
+CPU와 GPU의 반환 형식은 같습니다. `depth_device`는 `cpu` 또는 `cuda`, `depth_backend`는 실제 계산 방식입니다. CPU는 `OpenCV StereoSGBM / CPU`, GPU는 `C-Fast-FoundationStereo / ONNX Runtime CUDA`입니다. CPU 방식의 유효 영역과 정확도가 GPU 모델과 같다는 보장은 없습니다. `auto` 모드는 CUDA를 준비하지 못하면 CPU로 전환합니다. 브랜치별 기본 장치는 README를 확인하세요. `--depth-device`로 명시할 수도 있습니다.
 
 | 필드 | 의미 |
 | --- | --- |

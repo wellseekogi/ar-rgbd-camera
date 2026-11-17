@@ -1,12 +1,14 @@
 # AR Floor Is Lava · 실시간 깊이 서버
 
+이 문서는 `gpu` 브랜치 기준입니다. 기본 실행은 CUDA C-Fast-FoundationStereo이며 NVIDIA GPU와 호환 드라이버가 필요합니다. CUDA 준비에 실패하면 CPU로 자동 전환하지 않고 오류를 표시합니다. CPU 기본 버전은 `cpu` 브랜치, 자동 선택 공통 버전은 `main` 브랜치에서 관리합니다. `run_ui.py`와 `run_api.py` 모두 이 기본값을 따릅니다.
+
 핸드폰의 웹 카메라 영상 두 개를 노트북으로 보내고, 왼쪽 카메라 영상에 정렬된 **픽셀별 깊이맵**을 반환하는 프로토타입입니다. 세 번째 카메라는 선택적인 측면 미리보기입니다. 깊이는 사람 검출 성공 여부와 무관하게 계산합니다.
 
 ## 실행
 
 **`start.cmd`를 더블클릭하면 됩니다.** 필요한 환경이 없으면 설치하고, 모델·인증서를 준비한 뒤 서버가 응답하면 웹 화면을 자동으로 엽니다. 노트북 화면은 자동 로그인되고, 화면 맨 위에 카메라별 QR 3개가 자동 표시됩니다. 서버 창은 켜 두세요. 종료하려면 창에서 `Ctrl+C`를 누릅니다. 최초 HTTPS 인증서 신뢰 등록과 실물 카메라 보정은 아래 절차가 필요합니다.
 
-Windows, Python 3.13에서 CPU만으로도 실행할 수 있습니다. 기본 설치에는 CUDA/cuDNN 패키지가 필요하지 않습니다. CPU는 OpenCV StereoSGBM, CUDA가 준비된 GPU는 C-Fast-FoundationStereo를 사용합니다. 두 방식의 정확도가 같다는 뜻은 아니며 CPU에서는 무늬가 적거나 반사되는 영역의 깊이가 비어 있을 수 있습니다.
+이 GPU 브랜치는 Windows, Python 3.13, NVIDIA GPU와 호환 드라이버를 사용합니다. 기본 설치에 ONNX Runtime GPU와 CUDA/cuDNN 패키지가 포함됩니다. 그래픽카드가 없는 PC에는 `cpu` 브랜치를 사용하세요. CPU와 GPU 방식의 정확도가 같다는 뜻은 아닙니다.
 
 ```powershell
 cd C:\증강현실
@@ -40,7 +42,7 @@ IP를 직접 지정하려면 `./setup.ps1 -LaptopIp 192.168.0.10`처럼 실행�
 
 ### CPU / GPU 선택
 
-기본값은 `auto`입니다. CUDA 초기화가 가능하면 GPU 모델을 사용하고, 없거나 초기화에 실패하면 CPU StereoSGBM으로 전환합니다. CPU 경로에는 ONNX 모델이나 ONNX Runtime 패키지가 필요하지 않습니다. 그래픽카드가 없는 PC에서는 기존처럼 `start.cmd`를 실행하면 됩니다.
+이 브랜치의 기본값은 `cuda`입니다. `start.cmd`의 최초 설치와 `setup.ps1` 모두 GPU 패키지와 신경망 깊이 모델을 준비합니다. CUDA 초기화에 실패하면 오류를 표시합니다. 명시적으로 `--depth-device auto`를 지정할 때만 CPU 대체 실행을 허용합니다.
 
 ```powershell
 # GPU가 있는 PC에서도 CPU로 실행
@@ -52,7 +54,7 @@ IP를 직접 지정하려면 `./setup.ps1 -LaptopIp 192.168.0.10`처럼 실행�
 .venv/Scripts/python.exe run_ui.py --depth-device cuda
 ```
 
-실행 명령은 둘 중 하나씩 사용합니다. `LAVA_DEPTH_DEVICE=cpu` 환경 변수로도 고정할 수 있습니다. GPU 패키지는 `requirements-gpu.txt`에 분리했으며, `requirements-lock.txt`는 기존 CUDA 측정 환경의 참고 스냅샷이므로 CPU 설치에는 사용하지 않습니다. 새 CPU 설치는 `requirements.txt`를 사용합니다. GPU 패키지가 이미 설치된 환경을 CPU 모드로 실행할 때 해당 패키지를 삭제할 필요는 없습니다.
+실행 명령은 둘 중 하나씩 사용합니다. `LAVA_DEPTH_DEVICE` 환경 변수나 `--depth-device`로 기본값을 명시적으로 바꿀 수 있습니다. 이 GPU 브랜치의 `requirements.txt`에는 GPU 패키지가 포함되며 `requirements-gpu.txt`는 호환 설치 진입점입니다. GPU 패키지를 설치하지 않는 CPU 기본 배포는 `cpu` 브랜치입니다. `requirements-lock.txt`는 기존 CUDA 측정 환경의 참고 스냅샷입니다.
 
 화면 상태와 REST 응답의 `depth_backend`, `depth_device`에서 실제 계산 방식을 확인할 수 있습니다. RGB·0~1 float32 Z·유효 마스크·선택적 사람 마스크의 형식, 카메라 보정 필요 조건, 350ms 만료 기준은 그대로입니다. CPU의 0~96픽셀 미만 시차 탐색 범위 밖이거나 대응점을 찾지 못한 깊이는 무효로 반환합니다. 근거리·반사·무늬 없는 표면의 정확도는 실제 장비에서 확인해야 합니다.
 
