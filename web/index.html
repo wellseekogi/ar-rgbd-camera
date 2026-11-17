@@ -17,7 +17,7 @@
       <form id="join-form">
         <div id="key-field"><label for="token">접속 키</label><input id="token" type="password" autocomplete="off" required placeholder="서버 실행 창의 접속 키"></div>
         <label for="role">이 기기의 역할</label>
-        <select id="role"><option value="viewer">노트북 · 게임 화면</option><option value="cam1">핸드폰 · 카메라 1</option><option value="cam2">핸드폰 · 카메라 2</option><option value="cam3">핸드폰 · 보조 카메라 3</option></select>
+        <select id="role"><option value="viewer">노트북 · 게임 화면</option><option value="cam1">핸드폰 · 카메라 1</option><option value="cam2">핸드폰 · 카메라 2</option></select>
         <button id="connect-button" class="primary" type="submit">연결하기</button>
       </form>
       <p class="muted">노트북의 QR로 접속하면 접속 키가 자동으로 입력돼요. 처음에는 HTTPS 인증서 신뢰 등록과 카메라 허용이 필요해요.</p>
@@ -47,7 +47,7 @@
       <section id="rest-log" aria-label="REST API 실시간 로그"></section>
       <div class="workspace">
         <section class="stage" aria-label="카메라 합성 화면">
-          <div class="stage-heading"><label for="view-camera">메인 카메라</label><select id="view-camera"><option value="cam1">카메라 1</option><option value="cam2">카메라 2</option><option value="cam3">카메라 3</option></select><button id="fullscreen" type="button">전체 화면</button></div>
+          <div class="stage-heading"><label for="view-camera">메인 카메라</label><select id="view-camera"><option value="cam1">카메라 1</option><option value="cam2">카메라 2</option></select><button id="fullscreen" type="button">전체 화면</button></div>
           <p id="active-guide-status" class="active-guide-status" role="status" aria-live="polite">카메라의 새 영상을 기다리고 있어요.</p>
           <div id="stage-container"><canvas id="main-canvas" width="960" height="540" aria-label="선택한 카메라의 게임 영상"></canvas><p id="empty-stage">핸드폰에서 카메라를 연결해 주세요.</p></div>
           <div id="thumbnails" class="thumbnails"></div>
@@ -61,7 +61,7 @@
           <div class="actions"><button id="start-game" class="primary" type="button">게임 시작하기</button><button id="stop-game" type="button">종료하기</button></div>
         </aside>
       </div>
-      <section aria-labelledby="cameras-title"><div class="title-row"><h2 id="cameras-title">움직이며 카메라 보정</h2><a href="/static/board.png" download="charuco-200x280mm.png">기준판 이미지 받기</a></div><p class="muted">한 칸 40mm, 전체 200×280mm로 출력해요. 각 폰의 안내를 따라 움직이면 사진이 자동으로 모이고 체크돼요. 렌즈 보정 후에는 모든 카메라를 고정하고 같은 바닥 기준판으로 위치를 맞춰요. 이후 움직였다면 다시 보정해 주세요. 카메라 3은 보조이며 깊이는 1·2로 계산해요.</p><div id="camera-panels" class="camera-panels"></div></section>
+      <section aria-labelledby="cameras-title"><div class="title-row"><h2 id="cameras-title">움직이며 카메라 보정</h2><a href="/static/board.png" download="charuco-200x280mm.png">기준판 이미지 받기</a></div><p class="muted">한 칸 40mm, 전체 200×280mm로 출력해요. 각 폰의 안내를 따라 움직이면 사진이 자동으로 모이고 체크돼요. 렌즈 보정 후에는 두 카메라를 고정하고 같은 바닥 기준판으로 위치를 맞춰요. 이후 움직였다면 다시 보정해 주세요.</p><div id="camera-panels" class="camera-panels"></div></section>
       <details><summary>게임 규칙 설정</summary><form id="config-form" class="settings">
         <label>행 수<input name="rows" type="number" value="4" min="2" max="8" required></label>
         <label>열 수<input name="cols" type="number" value="4" min="2" max="8" required></label>

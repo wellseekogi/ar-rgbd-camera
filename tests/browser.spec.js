@@ -33,7 +33,7 @@ test("desktop and mobile show the connection form without overflow", async ({ pa
   }
 });
 
-test("three phone browsers send video and receive independent live calibration checklists", async ({ browser }) => {
+test("two phone browsers send video and receive independent live calibration checklists", async ({ browser }) => {
   const errors = [];
   const monitor = await browser.newContext();
   const page = await monitor.newPage();
@@ -44,7 +44,7 @@ test("three phone browsers send video and receive independent live calibration c
   await expect(page.locator("#connection")).toHaveText("서버 연결됨", { timeout: 15000 });
   const contexts = [];
 
-  for (const id of ["cam1", "cam2", "cam3"]) {
+  for (const id of ["cam1", "cam2"]) {
     const context = await phoneContext();
     contexts.push(context);
     const phone = await context.newPage();
@@ -73,10 +73,8 @@ test("three phone browsers send video and receive independent live calibration c
     await expect(page.locator(`#panel-${id} .connection-state`)).toHaveText("영상 수신 중");
     await expect(page.locator(`#panel-${id} output`)).toBeEmpty();
 
-    if (id !== "cam3") {
-      await expect(page.locator(`#live-status-${id}`)).toContainText("영상 수신 중");
-      expect(await page.locator(`#live-${id}`).evaluate((canvas) => canvas.width)).toBe(640);
-    }
+    await expect(page.locator(`#live-status-${id}`)).toContainText("영상 수신 중");
+    expect(await page.locator(`#live-${id}`).evaluate((canvas) => canvas.width)).toBe(640);
 
     await expect(phone.locator("#phone-guide [data-check=video]")).toHaveAttribute("data-done", "true");
     await expect(phone.locator("#phone-guide [data-check=intrinsics]")).toHaveAttribute("data-done", "false");
@@ -105,9 +103,13 @@ test("three phone browsers send video and receive independent live calibration c
 });
 
 
-test("desktop shows three QR codes above the game without a button click", async ({ page }) => {
+test("desktop shows two QR codes and only two camera controls", async ({ page }) => {
   await page.goto("/#key=browser-key&role=viewer");
-  await expect(page.locator("#pairing-codes img")).toHaveCount(3);
+  await expect(page.locator("#pairing-codes img")).toHaveCount(2);
+  await expect(page.locator("#camera-panels .camera-panel")).toHaveCount(2);
+  await expect(page.locator("#thumbnails .thumb")).toHaveCount(2);
+  expect(await page.locator("#role option").evaluateAll((options) => options.map((option) => option.value))).toEqual(["viewer", "cam1", "cam2"]);
+  expect(await page.locator("#view-camera option").evaluateAll((options) => options.map((option) => option.value))).toEqual(["cam1", "cam2"]);
   await expect(page.locator("#pairing-codes img").first()).toBeInViewport();
   expect(await page.locator("#pairing-codes img").evaluateAll((images) => images.every((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0))).toBe(true);
 });
@@ -118,7 +120,7 @@ test("QR invitation supplies the key and one click starts phone video", async ({
   await laptop.goto("/#key=browser-key&role=viewer");
   await expect(laptop.locator("#connection")).toHaveText("서버 연결됨");
   await expect(laptop).toHaveURL("http://127.0.0.1:8000/");
-  await expect(laptop.locator("#pairing-codes img")).toHaveCount(3);
+  await expect(laptop.locator("#pairing-codes img")).toHaveCount(2);
   await expect(laptop.locator("#pairing-codes img").first()).toBeInViewport();
   await laptop.locator("#pair-address").selectOption("127.0.0.1");
   const invitation = laptop.locator("#pairing-codes a").first();
