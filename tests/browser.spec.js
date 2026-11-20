@@ -162,6 +162,57 @@ test("connection check reports an unreachable server", async ({ page }) => {
   await expect(page.locator("#connection")).not.toContainText("연결됨");
 });
 
+test("photo collection is visible without claiming calibration passed", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const { createGuide, updateGuide } = await import("/static/calibration-ui.js");
+    const guide = createGuide(async () => ({}));
+    document.querySelector("main").replaceChildren(guide);
+
+    const state = {
+      enabled: true, stage: "collect", progress: 0, message: "잠시 멈추면 촬영해요.",
+      checks: [{ id: "intrinsics", label: "렌즈 품질 검사", done: false }],
+      coverage: [{ id: "center", label: "가운데", done: true }], quality: [],
+      action: null, can_act: false, collection: { accepted: 4, minimum: 16, limit: 40, last_error: null },
+    };
+
+    updateGuide(guide, state);
+    guide.addEventListener("quality-rejected", () => {
+      state.collection.accepted = 18;
+      state.collection.last_error = "별도 검증 오차가 커요.";
+      updateGuide(guide, state);
+    });
+    guide.addEventListener("lens-verified", () => {
+      state.stage = "place";
+      state.progress = 0.25;
+      updateGuide(guide, state);
+    });
+    guide.addEventListener("collection-limit", () => {
+      state.collection.accepted = state.collection.limit;
+      updateGuide(guide, state);
+    });
+  });
+  await expect(page.getByLabel("유효 사진 4장 수집 · 최소 16장 · 렌즈 검증 미완료")).toBeVisible();
+  await expect(page.locator(".scan-collection")).toContainText("유효 사진 4장 / 최소 16장");
+  await expect(page.locator("[data-check=intrinsics]")).toHaveAttribute("data-done", "false");
+  await page.locator(".calibration-guide").dispatchEvent("quality-rejected");
+  await expect(page.locator(".scan-quality-error")).toContainText("별도 검증 오차가 커요");
+  await expect(page.locator(".scan-collection")).toContainText("렌즈 품질 검사 통과가 필요");
+  await expect(page.getByLabel("유효 사진 18장 수집 · 최소 16장 · 렌즈 검증 미완료")).toBeVisible();
+
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: `data/calibration-collection-${width}.png`, fullPage: true });
+  }
+
+  await page.locator(".calibration-guide").dispatchEvent("collection-limit");
+  await expect(page.locator(".scan-quality-error")).toContainText("사진 초기화 · 다시 보정");
+  await page.locator(".calibration-guide").dispatchEvent("lens-verified");
+  await expect(page.getByLabel("검증 단계 완료율 25%")).toBeVisible();
+  await expect(page.locator(".scan-quality-error")).toBeHidden();
+});
+
 test("guided checks advance and metric depth colors overlay the matching reference", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(async () => {

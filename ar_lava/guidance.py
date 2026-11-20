@@ -43,6 +43,7 @@ class CalibrationGuide:
         self.floor_p95 = None
         self.board_observation = None
         self.attempted_samples = 0
+        self.validation_error = None
         self.message = "출력한 기준판 전체를 카메라에 보여 주세요."
 
     def arm_floor(self, camera):
@@ -185,6 +186,10 @@ class CalibrationGuide:
                 {"id": name, "label": text, "done": bool(done)} for name, text, done in checks
             ],
             "quality": quality,
+            "collection": {
+                "accepted": len(camera.calibrator.corners), "minimum": MIN_INTRINSIC_VIEWS,
+                "limit": 40, "last_error": self.validation_error,
+            },
             "coverage": [
                 {"id": name, "label": text, "done": name in self.coverage}
                 for name, text, _ in COVERAGE
@@ -288,7 +293,9 @@ class CalibrationGuide:
                 camera.floor_validated = False
                 camera.generation += 1
                 camera.error = ""
+                self.validation_error = None
             except (ValueError, cv2.error) as error:
+                self.validation_error = str(error)
                 self.message = f"{error} 다른 각도의 사진을 더 모아 주세요."
                 return
         self.message = self.next_capture_message(camera)

@@ -6,6 +6,8 @@ export function createGuide(onAction) {
       <canvas class="scan-ring" width="160" height="160" aria-label="검증 단계 완료율"></canvas>
       <div><strong class="scan-stage">자동 보정 안내</strong><p class="scan-instruction" role="status" aria-live="polite">카메라를 연결해 주세요.</p></div>
     </div>
+    <p class="scan-collection muted" role="status" hidden></p>
+    <p class="scan-quality-error scan-error" role="status" hidden></p>
     <div class="scan-coverage" aria-label="자동 촬영 요구사항"></div>
     <ul class="scan-checklist" aria-label="카메라 보정 체크리스트"></ul>
     <ul class="scan-quality scan-checklist" aria-label="실측 품질 검사"></ul>
@@ -43,7 +45,7 @@ export function updateGuide(container, guide) {
     return;
   }
 
-  const names = { collect: "렌즈 품질 검사", place: "이제 카메라를 고정해 주세요", floor: "바닥 고정 검증", verify: "좌우 정렬 검증", background: "빈 배경 확인", ready: "보정 검증 통과", manual: "수동 보정" };
+  const names = { collect: "렌즈 보정 · 사진 수집", place: "이제 카메라를 고정해 주세요", floor: "바닥 고정 검증", verify: "좌우 정렬 검증", background: "빈 배경 확인", ready: "보정 검증 통과", manual: "수동 보정" };
   container.dataset.stage = guide.stage;
   container.querySelector(".scan-stage").textContent = names[guide.stage];
   const instruction = container.querySelector(".scan-instruction");
@@ -55,11 +57,13 @@ export function updateGuide(container, guide) {
   const canvas = container.querySelector("canvas");
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, 160, 160);
+  const collection = guide.stage === "collect" ? guide.collection : null;
+  const progress = collection ? Math.min(collection.accepted / collection.minimum, 1) : guide.progress;
 
   for (let index = 0; index < 24; index++) {
     ctx.beginPath();
     ctx.arc(80, 80, 64, index / 24 * Math.PI * 2 - Math.PI / 2, (index + 0.7) / 24 * Math.PI * 2 - Math.PI / 2);
-    ctx.strokeStyle = index < Math.round(guide.progress * 24) ? "#b9e97b" : "#364252";
+    ctx.strokeStyle = index < Math.round(progress * 24) ? "#b9e97b" : "#364252";
     ctx.lineWidth = 10;
     ctx.lineCap = "round";
     ctx.stroke();
@@ -68,8 +72,14 @@ export function updateGuide(container, guide) {
   ctx.fillStyle = "#edf0f4";
   ctx.font = "600 28px system-ui";
   ctx.textAlign = "center";
-  ctx.fillText(guide.stage === "ready" ? "✓" : `${Math.round(guide.progress * 100)}%`, 80, 90);
-  canvas.setAttribute("aria-label", `검증 단계 완료율 ${Math.round(guide.progress * 100)}%`);
+  ctx.fillText(collection ? `${collection.accepted}장` : guide.stage === "ready" ? "✓" : `${Math.round(guide.progress * 100)}%`, 80, 90);
+  canvas.setAttribute("aria-label", collection ? `유효 사진 ${collection.accepted}장 수집 · 최소 ${collection.minimum}장 · 렌즈 검증 미완료` : `검증 단계 완료율 ${Math.round(guide.progress * 100)}%`);
+  const captureText = container.querySelector(".scan-collection");
+  captureText.hidden = !collection;
+  captureText.textContent = collection ? `유효 사진 ${collection.accepted}장 / 최소 ${collection.minimum}장 · ${collection.accepted < collection.minimum ? "서로 다른 사진을 더 모으면 품질 검사를 시작해요." : "최소 장수를 모았어요. 렌즈 품질 검사 통과가 필요해요."}` : "";
+  const qualityError = container.querySelector(".scan-quality-error");
+  qualityError.hidden = !collection?.last_error;
+  qualityError.textContent = collection?.last_error ? `마지막 품질 검사 미통과: ${collection.last_error} ${collection.accepted >= collection.limit ? "사진 초기화 · 다시 보정을 눌러 새 사진을 모아 주세요." : "다른 위치·기울기의 유효 사진을 추가하면 다시 검사해요."}` : "";
   const list = container.querySelector(".scan-checklist");
 
   for (const check of guide.checks) {

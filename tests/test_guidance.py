@@ -64,6 +64,43 @@ def test_guide_rejects_duplicates_missing_board_and_motion(tmp_path):
     assert camera.guide.snapshot(camera, stamp + 2000)["checks"][0]["done"] is False
 
 
+def test_capture_count_is_visible_before_lens_validation(tmp_path):
+    camera = Camera("cam1", tmp_path)
+    camera.connected, camera.profile = True, "synthetic"
+    observe_still(camera, board_view(), 1000)
+    state = camera.guide.snapshot(camera, camera.capture_ms)
+    assert state["collection"]["accepted"] == 1
+    assert state["collection"]["minimum"] == 16
+    assert state["progress"] == 0
+    assert state["stage"] == "collect" and camera.calibration is None
+
+
+def test_last_quality_failure_survives_duplicate_capture_feedback(tmp_path, monkeypatch):
+    camera = Camera("cam1", tmp_path)
+    camera.connected, camera.profile = True, "synthetic"
+    corners, ids = camera.calibrator.detect(board_view())
+    camera.calibrator.corners = [corners.copy() for _ in range(15)]
+    camera.calibrator.ids = [ids.copy() for _ in range(15)]
+    camera.calibrator.size, camera.calibrator.profile = (640, 480), "synthetic"
+
+    def reject():
+        raise ValueError("별도 검증 오차가 커요.")
+
+    monkeypatch.setattr(camera.calibrator, "solve_intrinsics", reject)
+    stamp = observe_still(camera, board_view(x=450), 1000)
+    observe_still(camera, board_view(x=450), stamp)
+    state = camera.guide.snapshot(camera, camera.capture_ms)
+    assert state["collection"]["accepted"] == 16
+    assert state["collection"]["last_error"] == "별도 검증 오차가 커요."
+    assert state["progress"] == 0 and camera.calibration is None
+    header = {
+        "type": "frame", "camera_id": "cam1", "seq": 100, "captured_ms": camera.capture_ms,
+        "processing_ms": 50, "guide": state, "composite_jpeg_bytes": 4, "reference_jpeg_bytes": 4,
+    }
+    packet = pack(header, b"jpegjpeg")
+    assert len(packet) - 12 <= MAX_HEADER
+
+
 def test_real_charuco_auto_capture_solves_intrinsics_then_waits_for_fixing(tmp_path):
     camera = Camera("cam1", tmp_path)
     camera.connected, camera.profile = True, "synthetic"
